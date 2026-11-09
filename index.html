@@ -124,12 +124,14 @@ svg.ic { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-wid
 .scaledesc { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .scaledesc li { display: flex; gap: 8px; }
 .scaledesc b { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-size: 12px; }
-.ztabs { position: sticky; top: -12px; z-index: 2; background: var(--surface); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px 0 8px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
-.ztabs button { border: 1.5px solid var(--line); background: var(--surface); border-radius: var(--r-md); padding: 7px 8px; text-align: left; display: flex; flex-direction: column; min-height: 46px; font-weight: 700; font-size: 13.5px; }
-.ztabs button small { font-weight: 500; font-size: 11px; color: var(--muted); }
+.ztabs { position: sticky; top: -12px; z-index: 2; display: grid; grid-template-columns: 1fr 1fr 58px; gap: 5px; margin: 0 -14px 12px; padding: 7px 14px 8px; background: var(--surface-2); border-top: 1px solid var(--line); border-bottom: 2px solid var(--kc); box-shadow: 0 6px 10px -6px rgba(0,0,0,.25); }
+.ztabs button { border: 1.5px solid var(--line); background: var(--surface); border-radius: var(--r-sm); padding: 0 8px; height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 4px; font-weight: 700; font-size: 13px; white-space: nowrap; min-width: 0; }
+.ztabs button span { overflow: hidden; text-overflow: ellipsis; }
+.ztabs button small { flex: none; font-weight: 700; font-size: 11px; color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: 0 6px; line-height: 17px; }
 .ztabs button.on { border-color: var(--kc); background: var(--kc); color: #fff; }
-.ztabs button.on small { color: rgba(255,255,255,.85); }
-.ztabs button[data-z="note"] { grid-column: 1 / -1; min-height: 36px; text-align: center; justify-content: center; }
+.ztabs button.on small { color: var(--kc); background: #fff; }
+.ztabs button[data-z="note"] { grid-column: 3; grid-row: 1 / span 2; height: auto; justify-content: center; }
+.sheet[data-k="gaikyo"] .sheet-body { scroll-padding-top: 96px; }
 .help { font-size: 11.5px; color: var(--muted); margin: 4px 0 0; }
 .inp { width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-sm); padding: 10px 11px; font-size: 16px; outline: none; }
 .inp:focus { border-color: var(--kc, var(--accent)); }
@@ -231,6 +233,39 @@ textarea.inp { min-height: 76px; resize: vertical; }
 .photos img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .photos figcaption { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 11px; padding: 2px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .photos .addph { aspect-ratio: 1; border: 1.5px dashed var(--line); border-radius: var(--r-sm); background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--muted); font-size: 12px; }
+
+.photos .skbadge { position: absolute; top: 4px; right: 4px; background: rgba(255,255,255,.9); border-radius: 50%; width: 24px; height: 24px; display: grid; place-items: center; color: var(--k-veg); }
+.photos .skbadge svg.ic { width: 15px; height: 15px; }
+.photos figure.isk img { object-fit: contain; background: #fff; }
+button.addph { font: inherit; cursor: pointer; }
+
+/* ===== スケッチ（断面図） ===== */
+.sk { position: fixed; inset: 0; z-index: 98; background: var(--bg); display: flex; flex-direction: column; padding-top: var(--safe-t); padding-bottom: var(--safe-b); }
+.sk-top { display: flex; gap: 6px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.sk-top .inp { flex: 1; min-width: 0; padding: 8px 10px; font-size: 15px; }
+.sk-tools, .sk-pal { display: flex; gap: 5px; overflow-x: auto; padding: 6px 8px; border-bottom: 1px solid var(--line); flex: none; scrollbar-width: none; }
+.sk-tools button { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-sm); padding: 5px 9px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; min-height: 36px; }
+.sk-tools button svg.ic { width: 17px; height: 17px; }
+.sk-tools button.on { background: var(--k-veg); border-color: var(--k-veg); color: #fff; }
+.sk-pen { display: inline-flex; gap: 5px; align-items: center; padding-left: 4px; border-left: 1px solid var(--line); }
+.sk-pen [data-color] { width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); }
+.sk-pen [data-color].on { box-shadow: 0 0 0 3px var(--k-veg); }
+.sk-pal { background: var(--surface-2); }
+.sk-pal button { flex: none; width: 64px; border: 1.5px solid var(--line); background: #fff; border-radius: var(--r-sm); padding: 2px 2px 3px; display: flex; flex-direction: column; align-items: center; font-size: 10.5px; line-height: 1.2; color: #17241b; }
+.sk-pal button img { width: 44px; height: 44px; }
+.sk-pal button.on { border-color: var(--k-veg); box-shadow: 0 0 0 2px var(--k-veg); }
+.sk-hint { font-size: 12px; color: var(--muted); padding: 4px 10px; min-height: 22px; }
+.sk-stage { flex: 1; min-height: 0; overflow: auto; background: #dfe5df; padding: 4px; -webkit-overflow-scrolling: touch; }
+.sk-stage canvas { display: block; background: #fff; touch-action: none; box-shadow: var(--shadow-1); }
+.sk-stage.pan canvas { touch-action: pan-x pan-y pinch-zoom; }
+.sk-prop { border-top: 2px solid var(--k-veg); background: var(--surface); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; flex: none; }
+.sk-prow { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.sk-prow label { flex: 1; min-width: 140px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.sk-prow label.sm { flex: 0 0 110px; min-width: 0; }
+.sk-prow .inp { padding: 8px 9px; font-size: 15px; }
+.sk-prow .btn { flex: 1; }
+.sk-prow .seg button { min-height: 32px; padding: 3px 12px; }
+@media (orientation: landscape) and (max-height: 500px) { .sk-pal button { width: 54px; } .sk-pal button img { width: 34px; height: 34px; } .sk-hint { display: none; } }
 
 /* ===== 地図の文字 ===== */
 .treelabels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
@@ -364,7 +399,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.4.0（2026-11-09）",   // 更新したら sw.js の VERSION も変える
+  version: "1.5.0（2026-11-09）",   // 更新したら sw.js の VERSION も変える
   appTitle: "樹木・植生調査",
   filePrefix: "樹木植生調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -374,6 +409,8 @@ window.APP_CONFIG = {
   basemap: "photo",                  // pale（淡色）／std（標準）／photo（航空写真）／osm
   offline: { maxTiles: 6000, minZoom: 10 },
   maxPhotos: 12,
+  // スケッチ（断面図）：アイコンの標準の高さ（m）と、方眼の初期の範囲（m）
+  sketch: { sizes: { L: 12, M: 6, S: 2.5 }, herb: 0.8, vine: 4, widthM: 20, heightM: 15 },
   photoMaxPx: 1600,
 
   // 樹木データの選択肢
@@ -459,8 +496,9 @@ window.APP_CONFIG = {
     veg: {
       label: "植生調査", photoCaps: ["全景", "高木層", "低木層", "草本層", "林床", "標本"],
       items: [
-        { id: "pref", section: "調査区", label: "都道府県", type: "select", options: ["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"] },
-        { id: "spot", label: "地点名", type: "line", placeholder: "例：〇〇神社 社叢" },
+        { id: "forest", section: "調査区", label: "樹林の種類", type: "buttons", options: ["広葉樹", "針葉樹"], required: true },
+        { id: "growth", label: "生育状況", type: "buttons", options: ["良好", "不良"], required: true },
+        { id: "spot", label: "地点名（調査地名を自動で入力）", type: "line" },
         { id: "quad", label: "区画・面積", type: "nums", fields: [{ id: "quad", label: "区画（例 10×10）", text: true }, { id: "area", label: "面積", unit: "m²", max: 100000 }] },
         { id: "topo", section: "立地", label: "標高・傾斜", type: "nums", fields: [{ id: "elev", label: "標高", unit: "m", max: 4000 }, { id: "slope", label: "傾斜", unit: "°", max: 90 }] },
         { id: "aspect", label: "方位", type: "select", options: ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "平坦"] },
@@ -945,6 +983,7 @@ window.Store = (function () {
     const body = $("#sheetBody");
     $$(".sec", body).forEach((sec) => { let n = sec.nextElementSibling, any = false; while (n && !n.classList.contains("sec")) { if (n.dataset.item && !n.hidden) any = true; if (!n.dataset.item) any = true; n = n.nextElementSibling; } sec.hidden = !any; });
     $$("[data-calc]", body).forEach((el) => { const f = CALC[el.dataset.calc]; if (f) el.innerHTML = f(c.rec.ans, c, el.dataset.zone); });
+    if (c.kind === "gaikyo") $$("#gzTabs [data-z] small").forEach((el) => { const z = el.parentElement.dataset.z; el.textContent = GK.rows.filter((r) => filled(c.rec.ans[`${z}|${r.id}`])).length; });
   }
   function missingItems(c) {
     const out = [];
@@ -1173,7 +1212,7 @@ window.Store = (function () {
     const c = S.cur; if (!c || c.kind !== "gaikyo") return;
     const a = c.rec.ans, z = S.gZone;
     const filledN = (zz) => GK.rows.filter((r) => filled(a[`${zz}|${r.id}`])).length;
-    $("#gzTabs").innerHTML = GK.zones.map(([k]) => `<button data-act="gZone" data-z="${k}"${z === k ? ' class="on"' : ""}><span>${esc(zoneName(a, k))}</span><small>${filledN(k)}/${GK.rows.length}項目</small></button>`).join("") + `<button data-act="gZone" data-z="note"${z === "note" ? ' class="on"' : ""}>備考</button>`;
+    $("#gzTabs").innerHTML = GK.zones.map(([k]) => `<button data-act="gZone" data-z="${k}"${z === k ? ' class="on"' : ""}><span>${esc(zoneName(a, k))}</span><small title="入力済みの項目数">${filledN(k)}</small></button>`).join("") + `<button data-act="gZone" data-z="note"${z === "note" ? ' class="on"' : ""}>備考</button>`;
     const its = z === "note" ? noteItems() : zoneItems(z);
     $("#gzBody").innerHTML = (z !== "note" ? `<div class="btnrow" style="margin-bottom:8px"><button class="btn line mini" data-act="gCopy">${ic("file")}ほかの調査区から写す</button></div>` : "") + itemsHTML(its, a, {});
     paintIcons($("#gzBody")); refreshVisibility();
@@ -1224,7 +1263,7 @@ window.Store = (function () {
     const rs = vegRecs().filter((r) => inSite(r.site));
     openPane("veg", `植生調査${S.site ? "：" + S.site : ""}`, `
       <div class="stat"><div><b>${rs.length}</b><span>調査区</span></div><div><b>${rs.filter((r) => r.status === "done").length}</b><span>完了</span></div><div><b>${new Set(rs.flatMap((r) => (r.sp || []).map((s) => s.n))).size}</b><span>出現種（合計）</span></div></div>
-      ${rs.length ? `<ul class="list">${rs.map((r) => `<li><button data-act="openVeg" data-id="${esc(r.id)}"><span class="dotc" style="background:${r.status === "done" ? "#7e57c2" : "#fff"};border-color:#4a2b7a"></span><span class="main"><span class="t1">${esc(r.no)}${r.ans.cname ? `　${esc(r.ans.cname)}` : ""}</span><span class="t2">${esc(r.site || "調査地なし")}・${dateJ(r.date)}・出現種 ${new Set((r.sp || []).map((s) => s.n)).size}種${r.lat == null ? "・位置未記録" : ""}</span></span>${statusBadge(statusOf(r))}</button></li>`).join("")}</ul>`
+      ${rs.length ? `<ul class="list">${rs.map((r) => `<li><button data-act="openVeg" data-id="${esc(r.id)}"><span class="dotc" style="background:${r.status === "done" ? "#7e57c2" : "#fff"};border-color:#4a2b7a"></span><span class="main"><span class="t1">${esc(r.no)}${r.ans.cname ? `　${esc(r.ans.cname)}` : ""}</span><span class="t2">${esc(r.site || "調査地なし")}${r.ans.forest || r.ans.growth ? `・${esc([r.ans.forest, r.ans.growth].filter(Boolean).join("・"))}` : ""}・${dateJ(r.date)}・出現種 ${new Set((r.sp || []).map((s) => s.n)).size}種${r.lat == null ? "・位置未記録" : ""}</span></span>${statusBadge(statusOf(r))}</button></li>`).join("")}</ul>`
         : `<div class="empty">${ic("grass")}<p>植生調査区はまだありません。</p></div>`}
       <div class="btnrow" style="margin-top:12px"><button class="btn main" data-act="newVegHere">${ic("locate")}現在地に調査区を作る</button><button class="btn line" data-act="newVegMap">${ic("pin")}地図で位置を指定</button></div>`);
   }
@@ -1233,7 +1272,7 @@ window.Store = (function () {
     const v = await formDialog({ title: "植生調査区を作る", fields: [{ id: "no", label: "調査区番号", value: nextPlotNo(), required: true }, { id: "site", label: "調査地", value: site, list: "siteList" }], ok: "作る" });
     if (!v) return;
     if (vegRecs().some((r) => r.no === v.no)) { toast(`調査区番号「${v.no}」はすでにあります`, 3500); return; }
-    const rec = { id: "v:" + uid(), kind: "veg", no: v.no, site: v.site, status: "draft", ans: {}, layers: {}, sp: [], photos: [], date: today(), by: S.name, lat: pos ? +pos.lat.toFixed(7) : null, lon: pos ? +pos.lon.toFixed(7) : null, acc: pos && pos.acc ? Math.round(pos.acc) : undefined };
+    const rec = { id: "v:" + uid(), kind: "veg", no: v.no, site: v.site, status: "draft", ans: { spot: v.site || "" }, layers: {}, sp: [], photos: [], date: today(), by: S.name, lat: pos ? +pos.lat.toFixed(7) : null, lon: pos ? +pos.lon.toFixed(7) : null, acc: pos && pos.acc ? Math.round(pos.acc) : undefined };
     if (v.site && !siteList().includes(v.site)) { const a = ls.get("sites", []); a.push(v.site); ls.set("sites", a); fillSiteLists(); }
     S.cur = { kind: "veg", rec, items: VEG.items, ctx: {} }; await saveCur("quiet"); applyFilter();
     openVeg(rec.id);
@@ -1241,6 +1280,7 @@ window.Store = (function () {
   function openVeg(id) {
     const old = R.get(id); if (!old) return;
     const rec = JSON.parse(JSON.stringify(old)); rec.layers = rec.layers || {}; rec.sp = rec.sp || [];
+    if (!rec.ans.spot && rec.site) rec.ans.spot = rec.site;
     S.cur = { kind: "veg", rec, items: VEG.items, ctx: {} }; S.sel = { kind: "veg", id }; setSelFilter();
     S.vegAdd = S.vegAdd || { l: "H", c: "", s: "" };
     openPane("vegForm", `植生調査：${rec.no}`, `
@@ -1323,9 +1363,9 @@ window.Store = (function () {
   async function renderPhotos() {
     const host = $("#phHost"), c = S.cur; if (!host || !c) return;
     const ph = c.rec.photos || [];
-    host.innerHTML = `<div class="photos">${ph.map((p, k) => `<figure data-act="viewPh" data-k="${k}"><img alt="" data-ph="${p.id}"><figcaption>${esc(p.cap || "（説明なし）")}</figcaption></figure>`).join("")}
-      ${ph.length < CFG.maxPhotos ? `<label class="addph">${ic("camera")}写真を追加<input type="file" id="phIn" accept="image/*" multiple hidden></label>` : ""}</div>
-      <p class="help">${ph.length}/${CFG.maxPhotos}枚。写真をタップすると説明を入力・削除できます。</p>`;
+    host.innerHTML = `<div class="photos">${ph.map((p, k) => `<figure data-act="viewPh" data-k="${k}"${p.sketch ? ' class="isk"' : ""}><img alt="" data-ph="${p.id}">${p.sketch ? `<span class="skbadge">${ic("edit")}</span>` : ""}<figcaption>${esc(p.cap || "（説明なし）")}</figcaption></figure>`).join("")}
+      ${ph.length < CFG.maxPhotos ? `<label class="addph">${ic("camera")}写真を追加<input type="file" id="phIn" accept="image/*" multiple hidden></label><button type="button" class="addph" data-act="newSketch">${ic("edit")}${c.kind === "veg" ? "断面図・スケッチ" : "スケッチ"}</button>` : ""}</div>
+      <p class="help">写真・スケッチ ${ph.length}/${CFG.maxPhotos}枚。タップすると説明の入力・削除${ph.some((p) => p.sketch) ? "、スケッチは編集" : ""}ができます。</p>`;
     for (const img of $$("img[data-ph]", host)) img.src = await photoURL(img.dataset.ph);
   }
   function shrinkImage(file, max) {
@@ -1360,7 +1400,7 @@ window.Store = (function () {
     const c = S.cur, p = c && c.rec.photos[k]; if (!p) return;
     const caps = (SV[c.kind] || {}).photoCaps || [];
     const d = document.createElement("div"); d.className = "viewer";
-    d.innerHTML = `<img alt="" src="${await photoURL(p.id)}"><div class="vbar"><input class="inp" id="vCap" list="capList" value="${esc(p.cap || "")}" placeholder="写真の説明"><datalist id="capList">${caps.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
+    d.innerHTML = `<img alt="" src="${await photoURL(p.id)}"><div class="vbar">${p.sketch ? `<button class="btn line" data-v="edit" style="color:#fff;border-color:#555">${ic("edit")}編集</button>` : ""}<input class="inp" id="vCap" list="capList" value="${esc(p.cap || "")}" placeholder="写真の説明"><datalist id="capList">${caps.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
       <button class="btn danger" data-v="del" style="color:#ff8a80">${ic("trash")}</button><button class="btn main" data-v="ok">閉じる</button></div>`;
     document.body.appendChild(d);
     d.addEventListener("click", async (e) => {
@@ -1368,7 +1408,8 @@ window.Store = (function () {
       if (b.dataset.v === "del") {
         if (!(await dialog({ title: "この写真を削除しますか？", ok: "削除する", danger: true }))) return;
         c.rec.photos.splice(k, 1); await Store.photos.remove(p.id); PH_URL.delete(p.id);
-      } else p.cap = $("#vCap", d).value.trim();
+      } else if (b.dataset.v === "edit") { p.cap = $("#vCap", d).value.trim(); d.remove(); openSketch(k); return; }
+      else p.cap = $("#vCap", d).value.trim();
       d.remove(); await saveCur("quiet"); renderPhotos();
     });
   }
@@ -1464,6 +1505,7 @@ window.Store = (function () {
       case "addSp": addSp(); break;
       case "editSp": editSp(+d.k); break;
       case "viewPh": viewPhoto(+d.k); break;
+      case "newSketch": openSketch(null); break;
       case "fset": S.F[d.k] = d.v; $$(`[data-fk="${d.k}"] button`).forEach((b) => b.classList.toggle("on", b.dataset.v === d.v)); applyFilter(); break;
       case "fclear": S.F.forest = S.F.growth = S.F.status = ""; applyFilter(); showFilter(); break;
       case "fshow": setSheetSize("mini"); fitSite(); break;
@@ -1471,6 +1513,226 @@ window.Store = (function () {
     }
   }
   function startTreeAdd() { startPlace("地図を動かして <b>＋</b> を新しい木の位置に合わせてください", addTreeAt); }
+
+  // =====================================================================
+  // スケッチ（断面図の作成補助）
+  //   方眼（m 目盛り）と地表線の上に、樹木・草本・つる植物のアイコンを縮尺どおりの高さで置ける。
+  //   手描き・直線・文字・スケールも追加できる。保存すると画像（写真と同じ扱い）になり、あとで編集できる。
+  // =====================================================================
+  const SK_W = 1600, SK_H = 1000, SK_M = { l: 96, r: 36, t: 50, b: 86 };
+  const SKC = CFG.sketch;
+  const SK_ICONS = [
+    ["bl_e", "L", "広葉樹（常緑）大", "常緑広 大"], ["bl_e", "M", "広葉樹（常緑）中", "常緑広 中"], ["bl_e", "S", "広葉樹（常緑）小", "常緑広 小"],
+    ["bl_d", "L", "広葉樹（落葉）大", "落葉広 大"], ["bl_d", "M", "広葉樹（落葉）中", "落葉広 中"], ["bl_d", "S", "広葉樹（落葉）小", "落葉広 小"],
+    ["cf", "L", "針葉樹（常緑）大", "針葉 大"], ["cf", "M", "針葉樹（常緑）中", "針葉 中"], ["cf", "S", "針葉樹（常緑）小", "針葉 小"],
+    ["herb", "", "草本類", "草本類"], ["vine", "", "つる植物", "つる植物"],
+  ];
+  const KIND_JP = { bl_e: "広葉樹（常緑）", bl_d: "広葉樹（落葉）", cf: "針葉樹（常緑）", herb: "草本類", vine: "つる植物" };
+  const defH = (kind, size) => kind === "herb" ? SKC.herb : kind === "vine" ? SKC.vine : SKC.sizes[size] || SKC.sizes.M;
+  const widthRatio = (k) => k === "cf" ? 0.4 : k === "herb" ? 1.3 : k === "vine" ? 0.35 : 0.8;
+  const newSketch = () => ({ v: 1, widthM: SKC.widthM, heightM: SKC.heightM, grid: true, snap: true, objs: [] });
+  const skGround = () => SK_H - SK_M.b;
+  const skPpm = (d) => Math.min((SK_W - SK_M.l - SK_M.r) / d.widthM, (skGround() - SK_M.t) / d.heightM);
+
+  // ---------- アイコンを描く（cx：根元の中心、by：地表、h：高さ px） ----------
+  function drawIcon(ctx, kind, cx, by, h) {
+    ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round";
+    const lw = Math.max(1.5, h * 0.012);
+    if (kind === "bl_e" || kind === "bl_d") {
+      const tw = Math.max(3, h * 0.055), crownB = by - h * 0.42, cy = by - h * 0.66, rx = h * 0.4 * (widthRatio(kind) / 0.8), ry = h * 0.33;
+      ctx.fillStyle = "#6d4c33"; ctx.beginPath(); ctx.moveTo(cx - tw / 2, by); ctx.lineTo(cx - tw * 0.35, crownB); ctx.lineTo(cx + tw * 0.35, crownB); ctx.lineTo(cx + tw / 2, by); ctx.closePath(); ctx.fill();
+      // 樹冠：小さな円を重ねたもこもこの形
+      const bumps = 9; ctx.beginPath();
+      for (let k = 0; k < bumps; k++) { const a = Math.PI * 2 * k / bumps - Math.PI / 2, x = cx + Math.cos(a) * rx * 0.78, y = cy + Math.sin(a) * ry * 0.78; ctx.moveTo(x + rx * 0.34, y); ctx.ellipse(x, y, rx * 0.34, ry * 0.36, 0, 0, Math.PI * 2); }
+      ctx.moveTo(cx + rx * 0.7, cy); ctx.ellipse(cx, cy, rx * 0.7, ry * 0.7, 0, 0, Math.PI * 2);
+      // 線を太く描いてから塗ると、外側の輪郭だけが残る
+      ctx.lineWidth = lw * 2.2;
+      if (kind === "bl_e") { ctx.strokeStyle = "#1b3f23"; ctx.stroke(); ctx.fillStyle = "#2f6b3c"; ctx.fill(); }
+      else {
+        ctx.strokeStyle = "#4f7f3a"; ctx.stroke(); ctx.fillStyle = "#d9edc6"; ctx.fill();
+        // 落葉樹：樹冠の中に枝を描いて区別
+        ctx.strokeStyle = "#8a6a4d"; ctx.lineWidth = Math.max(1.2, lw * 0.8); ctx.beginPath();
+        ctx.moveTo(cx, crownB); ctx.lineTo(cx, cy - ry * 0.35); ctx.moveTo(cx, cy + ry * 0.2); ctx.lineTo(cx - rx * 0.45, cy - ry * 0.25); ctx.moveTo(cx, cy); ctx.lineTo(cx + rx * 0.45, cy - ry * 0.35); ctx.stroke();
+      }
+    } else if (kind === "cf") {
+      const tw = Math.max(3, h * 0.05), w = h * widthRatio(kind);
+      ctx.fillStyle = "#6d4c33"; ctx.fillRect(cx - tw / 2, by - h * 0.22, tw, h * 0.22);
+      ctx.fillStyle = "#1f4d3a"; ctx.strokeStyle = "#0f2e22"; ctx.lineWidth = lw;
+      const tiers = [[0.14, 0.62, 1], [0.38, 0.82, 0.78], [0.6, 1, 0.52]];
+      for (const [b0, t0, ww] of tiers) { ctx.beginPath(); ctx.moveTo(cx - w / 2 * ww, by - h * b0); ctx.lineTo(cx, by - h * t0); ctx.lineTo(cx + w / 2 * ww, by - h * b0); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    } else if (kind === "herb") {
+      const w = h * widthRatio(kind); ctx.strokeStyle = "#4c8c3a"; ctx.lineWidth = Math.max(2, h * 0.05);
+      const n = 7; for (let k = 0; k < n; k++) { const t = k / (n - 1) - 0.5, tx = cx + t * w, ty = by - h * (0.7 + 0.3 * (1 - Math.abs(t) * 2)); ctx.beginPath(); ctx.moveTo(cx + t * w * 0.15, by); ctx.quadraticCurveTo(cx + t * w * 0.3, by - h * 0.5, tx, ty); ctx.stroke(); }
+    } else if (kind === "vine") {
+      ctx.strokeStyle = "#5b7d1f"; ctx.lineWidth = Math.max(2, h * 0.025); ctx.beginPath(); ctx.moveTo(cx, by);
+      const amp = h * 0.09, steps = 40; for (let k = 1; k <= steps; k++) { const t = k / steps; ctx.lineTo(cx + Math.sin(t * Math.PI * 5) * amp, by - h * t); } ctx.stroke();
+      ctx.fillStyle = "#7fae3a"; for (let k = 1; k <= 6; k++) { const t = k / 7, x = cx + Math.sin(t * Math.PI * 5) * amp, y = by - h * t, s = k % 2 ? 1 : -1; ctx.beginPath(); ctx.ellipse(x + s * h * 0.07, y, h * 0.06, h * 0.03, s * 0.5, 0, Math.PI * 2); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+  function iconBox(d, o) { const ppm = skPpm(d), h = o.h * ppm, w = Math.max(24, h * widthRatio(o.kind)); return { x0: o.x - w / 2, x1: o.x + w / 2, y0: o.y - h - (o.cap ? 34 : 0), y1: o.y + 4, h, w }; }
+  function scaleBox(d, o) { const L = o.m * skPpm(d); return { x0: o.x - 6, x1: o.x + L + 6, y0: o.y - 40, y1: o.y + 16 }; }
+  function textBox(ctx, o) { ctx.font = `bold ${o.size || 30}px sans-serif`; const w = ctx.measureText(o.text).width; return { x0: o.x - 4, x1: o.x + w + 4, y0: o.y - (o.size || 30), y1: o.y + 8 }; }
+  function halo(ctx, txt, x, y, align = "center") { ctx.textAlign = align; ctx.lineWidth = 6; ctx.strokeStyle = "rgba(255,255,255,.92)"; ctx.strokeText(txt, x, y); ctx.fillStyle = "#14231a"; ctx.fillText(txt, x, y); }
+  function renderSketch(ctx, d, selIdx) {
+    ctx.save(); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, SK_W, SK_H);
+    const ppm = skPpm(d), gy = skGround(), x0 = SK_M.l;
+    const WM = Math.floor((SK_W - SK_M.l - SK_M.r) / ppm + 1e-9), HM = Math.floor((gy - SK_M.t) / ppm + 1e-9);
+    if (d.grid) {
+      ctx.lineWidth = 1;
+      const st1 = ppm < 6 ? 5 : 1;
+      for (let m = 0; m <= WM; m += st1) { const x = x0 + m * ppm; ctx.strokeStyle = m % 5 ? "#e4ebe5" : "#b9c8bd"; ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x, gy - HM * ppm); ctx.stroke(); }
+      for (let m = 0; m <= HM; m += st1) { const y = gy - m * ppm; ctx.strokeStyle = m % 5 ? "#e4ebe5" : "#b9c8bd"; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + WM * ppm, y); ctx.stroke(); }
+      ctx.fillStyle = "#4b5a50"; ctx.font = "22px sans-serif"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      for (let m = 0; m <= HM; m += HM <= 10 ? 1 : 5) ctx.fillText(`${m}m`, x0 - 10, gy - m * ppm);
+      ctx.textAlign = "center"; ctx.textBaseline = "top";
+      for (let m = 0; m <= WM; m += WM <= 12 ? 1 : 5) ctx.fillText(`${m}`, x0 + m * ppm, gy + 10);
+      ctx.fillText("（m）", x0 + WM * ppm, gy + 40); ctx.textBaseline = "alphabetic";
+    }
+    // 地表線
+    ctx.strokeStyle = "#7a5a3c"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x0 - 20, gy); ctx.lineTo(SK_W - SK_M.r + 10, gy); ctx.stroke();
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    d.objs.forEach((o, i) => {
+      if (o.type === "stroke") { ctx.strokeStyle = o.color; ctx.lineWidth = o.w; ctx.beginPath(); o.pts.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); }
+      else if (o.type === "icon") { const b = iconBox(d, o); drawIcon(ctx, o.kind, o.x, o.y, b.h); if (o.cap) { ctx.font = "bold 26px sans-serif"; halo(ctx, o.cap, o.x, o.y - b.h - 10); } }
+      else if (o.type === "scale") {
+        const L = o.m * ppm; ctx.strokeStyle = "#14231a"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(o.x + L, o.y);
+        const step = o.m <= 10 ? 1 : 5; for (let m = 0; m <= o.m + 1e-9; m += step) { const t = m === 0 || Math.abs(m - o.m) < 1e-9 ? 14 : 8; ctx.moveTo(o.x + m * ppm, o.y - t); ctx.lineTo(o.x + m * ppm, o.y); }
+        ctx.stroke(); ctx.font = "bold 24px sans-serif"; halo(ctx, `${o.m} m`, o.x + L / 2, o.y - 18);
+      } else if (o.type === "text") { ctx.font = `bold ${o.size || 30}px sans-serif`; ctx.textBaseline = "alphabetic"; halo(ctx, o.text, o.x, o.y, "left"); }
+      if (i === selIdx) { const b = boxOf(ctx, d, o); ctx.setLineDash([8, 6]); ctx.strokeStyle = "#1a73e8"; ctx.lineWidth = 2.5; ctx.strokeRect(b.x0 - 4, b.y0 - 4, b.x1 - b.x0 + 8, b.y1 - b.y0 + 8); ctx.setLineDash([]); }
+    });
+    ctx.restore();
+  }
+  function boxOf(ctx, d, o) {
+    if (o.type === "icon") return iconBox(d, o);
+    if (o.type === "scale") return scaleBox(d, o);
+    if (o.type === "text") return textBox(ctx, o);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of o.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return { x0: x0 - o.w, y0: y0 - o.w, x1: x1 + o.w, y1: y1 + o.w };
+  }
+  const iconThumb = (kind, size) => { const c = document.createElement("canvas"); c.width = 72; c.height = 72; const ctx = c.getContext("2d"); const h = kind === "herb" ? 30 : kind === "vine" ? 58 : size === "L" ? 62 : size === "M" ? 44 : 26; drawIcon(ctx, kind, 36, 66, h); ctx.strokeStyle = "#7a5a3c"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(4, 66); ctx.lineTo(68, 66); ctx.stroke(); return c.toDataURL(); };
+
+  // ---------- 編集画面 ----------
+  function openSketch(photoIdx) {
+    const c = S.cur; if (!c) return;
+    const meta = photoIdx != null ? c.rec.photos[photoIdx] : null;
+    const d = meta && meta.sketch ? JSON.parse(JSON.stringify(meta.sketch)) : newSketch();
+    const st = { mode: "select", place: null, sel: -1, color: "#14231a", w: 4, zoom: 1, undo: [], drag: null };
+    const wrap = document.createElement("div"); wrap.className = "sk";
+    wrap.innerHTML = `
+      <div class="sk-top"><button class="icon-btn" data-k="close" aria-label="閉じる">${ic("x")}</button><input class="inp" id="skTitle" value="${esc(meta ? meta.cap || "" : c.kind === "veg" ? "断面図" : "スケッチ")}" placeholder="スケッチの名前"><button class="btn line mini" data-k="undo">元に戻す</button><button class="btn main mini" data-k="save">保存</button></div>
+      <div class="sk-tools">
+        <button data-mode="select" class="on">${ic("move")}選択</button><button data-mode="pan">${ic("mapview")}移動</button><button data-mode="pen">${ic("edit")}手描き</button><button data-mode="line">／ 直線</button><button data-mode="text">Ａ 文字</button>
+        <button data-k="scale">├┤ スケール</button><button data-k="grid">${ic("layers")}方眼・範囲</button><button data-k="zout">－</button><button data-k="zin">＋</button>
+        <span class="sk-pen" hidden>${["#14231a", "#2f6b3c", "#7a5a3c", "#1a5fb4", "#c62828"].map((col) => `<button data-color="${col}" style="background:${col}"${col === st.color ? ' class="on"' : ""} aria-label="色"></button>`).join("")}<button data-pw="3" class="pw on">細</button><button data-pw="8" class="pw">太</button></span>
+      </div>
+      <div class="sk-pal">${SK_ICONS.map(([k, s, l, sh], i) => `<button data-icon="${i}" title="${esc(l)}"><img alt="" src="${iconThumb(k, s)}"><span>${esc(sh)}</span></button>`).join("")}</div>
+      <div class="sk-hint" id="skHint"></div>
+      <div class="sk-stage" id="skStage"><canvas id="skCv" width="${SK_W}" height="${SK_H}"></canvas></div>
+      <div class="sk-prop" id="skProp" hidden></div>`;
+    document.body.appendChild(wrap);
+    const cv = $("#skCv", wrap), ctx = cv.getContext("2d"), stage = $("#skStage", wrap);
+    const fitZoom = () => Math.min(1, (stage.clientWidth - 8) / SK_W, Math.max(0.25, (stage.clientHeight - 8) / SK_H));
+    const applyZoom = () => { cv.style.width = SK_W * st.zoom + "px"; cv.style.height = SK_H * st.zoom + "px"; };
+    st.zoom = fitZoom(); applyZoom();
+    const draw = () => renderSketch(ctx, d, st.sel);
+    const push = () => { st.undo.push(JSON.stringify(d)); if (st.undo.length > 60) st.undo.shift(); };
+    const hint = (t) => { $("#skHint", wrap).textContent = t; };
+    const setMode = (m) => {
+      st.mode = m; st.place = null; $$(".sk-tools [data-mode], .sk-pal [data-icon]", wrap).forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
+      $(".sk-pen", wrap).hidden = !(m === "pen" || m === "line");
+      stage.classList.toggle("pan", m === "pan");
+      hint({ select: "アイコン・文字・線をタッチして選び、ドラッグで動かせます", pan: "指で図を動かせます（拡大は ＋）", pen: "指でなぞって描きます", line: "始点から終点までなぞると直線になります", text: "文字を置く場所をタッチします" }[m] || "");
+    };
+    const pt = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * SK_W / r.width, (e.clientY - r.top) * SK_H / r.height]; };
+    const hitTest = (x, y) => { for (let i = d.objs.length - 1; i >= 0; i--) { const o = d.objs[i], b = boxOf(ctx, d, o);
+      if (x < b.x0 - 10 || x > b.x1 + 10 || y < b.y0 - 10 || y > b.y1 + 10) continue;
+      if (o.type === "stroke") { if (!o.pts.some(([px, py], k) => k && distSeg(x, y, o.pts[k - 1], [px, py]) < o.w + 14)) continue; }
+      return i; } return -1; };
+    const distSeg = (x, y, [ax, ay], [bx, by]) => { const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L)) : 0; return Math.hypot(x - ax - t * dx, y - ay - t * dy); };
+    function showProp() {
+      const p = $("#skProp", wrap), o = d.objs[st.sel];
+      if (!o) { p.hidden = true; return; }
+      p.hidden = false;
+      if (o.type === "icon") p.innerHTML = `<div class="sk-prow"><b>${esc(KIND_JP[o.kind])}</b>${o.kind.startsWith("bl") || o.kind === "cf" ? `<span class="seg sq">${["L", "M", "S"].map((s) => `<button data-size="${s}"${o.size === s ? ' class="on"' : ""}>${{ L: "大", M: "中", S: "小" }[s]}</button>`).join("")}</span>` : ""}</div>
+        <div class="sk-prow"><label>キャプション<input class="inp" id="skCap" value="${esc(o.cap || "")}" list="spList" placeholder="例：クロマツ"></label><label class="sm">高さ<span class="unitbox"><input class="inp" id="skH" inputmode="decimal" value="${o.h}"><span class="unit">m</span></span></label></div>
+        <div class="sk-prow"><button class="btn line mini" data-k="dup">複製</button><button class="btn line mini" data-k="ground">地表にそろえる</button><button class="btn danger mini" data-k="del">削除</button></div>`;
+      else if (o.type === "scale") p.innerHTML = `<div class="sk-prow"><b>スケール</b><label class="sm">長さ<span class="unitbox"><input class="inp" id="skSM" inputmode="decimal" value="${o.m}"><span class="unit">m</span></span></label><button class="btn danger mini" data-k="del">削除</button></div>`;
+      else if (o.type === "text") p.innerHTML = `<div class="sk-prow"><label>文字<input class="inp" id="skTx" value="${esc(o.text)}"></label><span class="seg sq"><button data-fs="24"${o.size === 24 ? ' class="on"' : ""}>小</button><button data-fs="30"${(o.size || 30) === 30 ? ' class="on"' : ""}>中</button><button data-fs="40"${o.size === 40 ? ' class="on"' : ""}>大</button></span><button class="btn danger mini" data-k="del">削除</button></div>`;
+      else p.innerHTML = `<div class="sk-prow"><b>線</b><button class="btn danger mini" data-k="del">削除</button></div>`;
+      const cap = $("#skCap", p); if (cap) { cap.onfocus = push; cap.oninput = () => { o.cap = cap.value; draw(); }; }
+      const hh = $("#skH", p); if (hh) { hh.onfocus = push; hh.oninput = () => { const v = +hh.value.replace(/[０-９．]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)); if (v > 0) { o.h = v; draw(); } }; }
+      const sm = $("#skSM", p); if (sm) { sm.onfocus = push; sm.oninput = () => { const v = +sm.value; if (v > 0) { o.m = v; draw(); } }; }
+      const tx = $("#skTx", p); if (tx) { tx.onfocus = push; tx.oninput = () => { o.text = tx.value; draw(); }; }
+    }
+    const select = (i) => { st.sel = i; showProp(); draw(); };
+    // ---------- 操作 ----------
+    cv.addEventListener("pointerdown", (e) => {
+      if (st.mode === "pan") return;
+      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+      const [x, y] = pt(e);
+      if (st.place != null) {
+        push(); const [k, s, l] = SK_ICONS[st.place];
+        const o = { type: "icon", kind: k, size: s, h: defH(k, s), x: Math.round(x), y: d.snap ? skGround() : Math.round(y), cap: "" };
+        d.objs.push(o); setMode("select"); select(d.objs.length - 1);
+        setTimeout(() => $("#skCap", wrap)?.focus(), 60); return;
+      }
+      if (st.mode === "pen" || st.mode === "line") { push(); const o = { type: "stroke", color: st.color, w: st.w, pts: [[x, y]] }; d.objs.push(o); st.drag = { o, line: st.mode === "line", x0: x, y0: y }; draw(); return; }
+      if (st.mode === "text") { dialog({ title: "文字を入れる", input: { placeholder: "例：林縁、のり面、ササ" }, ok: "置く" }).then((t) => { if (!t) return; push(); d.objs.push({ type: "text", text: t, x: Math.round(x), y: Math.round(y), size: 30 }); setMode("select"); select(d.objs.length - 1); }); return; }
+      const i = hitTest(x, y); select(i);
+      if (i >= 0) { push(); const o = d.objs[i]; st.drag = { o, sx: x, sy: y, ox: o.x, oy: o.y, pts: o.pts ? o.pts.map((p) => p.slice()) : null, moved: false }; }
+    });
+    cv.addEventListener("pointermove", (e) => {
+      const g = st.drag; if (!g) return; const [x, y] = pt(e);
+      if (g.line != null) { if (g.line) g.o.pts = [[g.x0, g.y0], [x, y]]; else g.o.pts.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10]); draw(); return; }
+      const dx = x - g.sx, dy = y - g.sy; g.moved = true;
+      if (g.pts) g.o.pts = g.pts.map(([px, py]) => [px + dx, py + dy]);
+      else { g.o.x = Math.round(g.ox + dx); g.o.y = g.o.type === "icon" && d.snap && Math.abs(g.oy - skGround()) < 1 && Math.abs(dy) < 60 ? skGround() : Math.round(g.oy + dy); }
+      draw();
+    });
+    const up = () => { const g = st.drag; st.drag = null; if (g && g.line === false && g.o.pts.length < 2) d.objs.pop(); if (g && g.moved === false) st.undo.pop(); draw(); };
+    cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+    wrap.addEventListener("click", async (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.mode) { setMode(b.dataset.mode); st.sel = -1; showProp(); draw(); return; }
+      if (b.dataset.icon != null) { const i = +b.dataset.icon; st.place = i; $$(".sk-tools [data-mode], .sk-pal [data-icon]", wrap).forEach((x) => x.classList.toggle("on", x === b)); stage.classList.remove("pan"); st.mode = "place"; hint(`「${SK_ICONS[i][2]}」を置く場所をタッチします${d.snap ? "（根元は地表線にそろいます）" : ""}`); return; }
+      if (b.dataset.color) { st.color = b.dataset.color; $$("[data-color]", wrap).forEach((x) => x.classList.toggle("on", x === b)); return; }
+      if (b.dataset.pw) { st.w = +b.dataset.pw; $$("[data-pw]", wrap).forEach((x) => x.classList.toggle("on", x === b)); return; }
+      const o = d.objs[st.sel];
+      if (b.dataset.size && o) { push(); o.size = b.dataset.size; o.h = defH(o.kind, o.size); showProp(); draw(); return; }
+      if (b.dataset.fs && o) { push(); o.size = +b.dataset.fs; showProp(); draw(); return; }
+      switch (b.dataset.k) {
+        case "close": if (st.undo.length && !(await dialog({ title: "保存せずに閉じますか？", body: "<p>変更した内容は保存されません。</p>", ok: "閉じる", danger: true }))) return; wrap.remove(); break;
+        case "undo": if (st.undo.length) { const prev = JSON.parse(st.undo.pop()); Object.assign(d, prev); st.sel = -1; showProp(); draw(); } break;
+        case "zin": st.zoom = Math.min(2.5, st.zoom * 1.35); applyZoom(); break;
+        case "zout": st.zoom = Math.max(fitZoom() * 0.8, st.zoom / 1.35); applyZoom(); break;
+        case "del": if (o) { push(); d.objs.splice(st.sel, 1); select(-1); } break;
+        case "dup": if (o) { push(); const n = JSON.parse(JSON.stringify(o)); n.x += 60; d.objs.push(n); select(d.objs.length - 1); } break;
+        case "ground": if (o) { push(); o.y = skGround(); draw(); } break;
+        case "scale": { push(); const m = d.widthM >= 20 ? 5 : d.widthM >= 8 ? 2 : 1; d.objs.push({ type: "scale", m, x: Math.max(SK_M.l, SK_W - SK_M.r - m * skPpm(d) - 30), y: SK_M.t + 40 }); setMode("select"); select(d.objs.length - 1); break; }
+        case "grid": {
+          const v = await formDialog({ title: "方眼・範囲（断面図の補助）", body: `<p class="small muted">横幅・高さを調査区に合わせると、アイコンが高さ（m）どおりの大きさで描かれます。</p>`,
+            fields: [{ id: "w", label: "横幅（m）", value: String(d.widthM), type: "number" }, { id: "h", label: "高さ（m）", value: String(d.heightM), type: "number" }, { id: "grid", label: "方眼（1m・5m 目盛り）", value: d.grid ? "表示する" : "表示しない", options: ["表示する", "表示しない"] }, { id: "snap", label: "アイコンの根元を地表線にそろえる", value: d.snap ? "そろえる" : "そろえない", options: ["そろえる", "そろえない"] }], ok: "決定" });
+          if (!v) return; push();
+          if (+v.w > 0) d.widthM = Math.min(500, +v.w); if (+v.h > 0) d.heightM = Math.min(200, +v.h);
+          d.grid = v.grid !== "表示しない"; d.snap = v.snap !== "そろえない"; draw(); break;
+        }
+        case "save": {
+          st.sel = -1; renderSketch(ctx, d, -1);
+          const data = cv.toDataURL("image/jpeg", 0.9), cap = $("#skTitle", wrap).value.trim() || "スケッチ", at = new Date().toISOString();
+          if (meta) { meta.cap = cap; meta.sketch = d; meta.at = at; await Store.photos.put({ id: meta.id, rid: c.rec.id, data, at }); PH_URL.set(meta.id, data); }
+          else {
+            if ((c.rec.photos || []).length >= CFG.maxPhotos) { toast(`写真・スケッチは合わせて${CFG.maxPhotos}枚までです`); return; }
+            const id = "p:" + uid(); await Store.photos.put({ id, rid: c.rec.id, data, at }); PH_URL.set(id, data);
+            (c.rec.photos = c.rec.photos || []).push({ id, cap, at, sketch: d });
+          }
+          await saveCur(); renderPhotos(); wrap.remove(); toast("スケッチを保存しました"); break;
+        }
+      }
+    });
+    setMode("select"); draw();
+    if (!meta && c.kind === "veg") hint("下のアイコンを選んで、置く場所をタッチします。「方眼・範囲」で横幅・高さ（m）を調査区に合わせると縮尺どおりに描けます");
+  }
 
   // =====================================================================
   // Excel（.xlsx）を作る：罫線・見出し色・選択リスト付き（外部ライブラリは JSZip のみ）
@@ -1595,13 +1857,14 @@ window.Store = (function () {
     sh.set(0, 0, "植生調査票", 4); sh.heights[0] = 24;
     const v = (k) => r ? num(a[k]) : "";
     const pairs = [["調査区番号", r ? r.no : ""], ["調査日", r ? r.date : ""], ["調査者", r ? r.by : ""],
-      ["調査地", r ? r.site : ""], ["地点名", r ? a.spot : ""], ["都道府県", r ? a.pref : ""],
+      ["調査地", r ? r.site : ""], ["地点名", r ? a.spot || r.site || "" : ""], ["樹林の種類", r ? a.forest : ""],
+      ["生育状況", r ? a.growth : ""],
       ["緯度", r && r.lat != null ? +r.lat : ""], ["経度", r && r.lon != null ? +r.lon : ""], ["標高(m)", v("elev")],
       ["傾斜(°)", v("slope")], ["方位", r ? a.aspect : ""], ["微地形", r ? a.micro : ""],
       ["土壌", r ? a.soil : ""], ["土壌の湿り", r ? a.moist : ""], ["人為的影響", r ? a.human : ""],
       ["攪乱後の年数", v("years")], ["群落の種類", r ? a.ctype : ""], ["群落名", r ? a.cname : ""],
       ["区画", r ? a.quad : ""], ["面積(m²)", v("area")], ["出現種数", r ? new Set((r.sp || []).map((s) => s.n)).size : ""]];
-    const opt = { 都道府県: "pref", 方位: "aspect", 微地形: "micro", 土壌: "soil", 土壌の湿り: "moist", 人為的影響: "human", 群落の種類: "ctype" };
+    const opt = { 樹林の種類: "forest", 生育状況: "growth", 方位: "aspect", 微地形: "micro", 土壌: "soil", 土壌の湿り: "moist", 人為的影響: "human", 群落の種類: "ctype" };
     let row = 2;
     pairs.forEach(([l, val], k) => {
       const rr = row + Math.floor(k / 3), cc = (k % 3) * 2;
@@ -1658,11 +1921,11 @@ window.Store = (function () {
       for (const [z] of GK.zones) gs.row(gr++, [s, zoneName(a, z), ST_LABEL[statusOf(r)], r.date, r.by, a.weather || "", ...GKr.map((x) => x.get(a, z)), notes], 3); });
     // 植生（植生野帳の読み込み形式）
     const pc = bk.add("植生_調査区"), PH = ["調査区番号", "調査日", "調査者", "都道府県", "地点名", "緯度", "経度", "標高(m)", "傾斜(°)", "方位", "微地形", "土壌", "土壌の湿り", "人為的影響", "攪乱後の年数", "群落の種類", "区画", "面積(m2)",
-      ...VEG.layers.flatMap(([, n]) => [`${n}_高さ(m)`, `${n}_植被率(%)`]), "植生帯の指定", "気候区分の指定", "群（手動）", "解析に含める", "状態", "メモ", "内部ID", "調査地", "群落名（現地）", "優占種", "写真ファイル"];
+      ...VEG.layers.flatMap(([, n]) => [`${n}_高さ(m)`, `${n}_植被率(%)`]), "植生帯の指定", "気候区分の指定", "群（手動）", "解析に含める", "状態", "メモ", "内部ID", "調査地", "群落名（現地）", "優占種", "写真ファイル", "樹林の種類", "生育状況"];
     pc.row(0, PH, 1).width(PH.map((h) => Math.max(9, Math.min(18, h.length * 1.6)))); pc.heights[0] = 32; pc.freeze = [1, 1];
     plots.forEach((r, k) => { const a = r.ans, L = r.layers || {};
-      pc.row(k + 1, [r.no, r.date, r.by, a.pref || "", a.spot || r.site || "", r.lat ?? "", r.lon ?? "", num(a.elev), num(a.slope), a.aspect || "", a.micro || "", a.soil || "", a.moist || "", a.human || "", num(a.years), a.ctype || "", a.quad || "", num(a.area),
-        ...VEG.layers.flatMap(([l]) => [num((L[l] || {}).h), num((L[l] || {}).c)]), "", "", "", 1, r.status === "done" ? "確定" : "下書き", a.note || "", r.id, r.site || "", a.cname || "", VEG.layers.map(([l, n]) => (L[l] || {}).d ? `${n}:${L[l].d}` : "").filter(Boolean).join("／"), (r.photos || []).map((p, j) => photoFile("veg", r, p, j)).join("\n")], 2); });
+      pc.row(k + 1, [r.no, r.date, r.by, "", a.spot || r.site || "", r.lat ?? "", r.lon ?? "", num(a.elev), num(a.slope), a.aspect || "", a.micro || "", a.soil || "", a.moist || "", a.human || "", num(a.years), a.ctype || "", a.quad || "", num(a.area),
+        ...VEG.layers.flatMap(([l]) => [num((L[l] || {}).h), num((L[l] || {}).c)]), "", "", "", 1, r.status === "done" ? "確定" : "下書き", a.note || "", r.id, r.site || "", a.cname || "", VEG.layers.map(([l, n]) => (L[l] || {}).d ? `${n}:${L[l].d}` : "").filter(Boolean).join("／"), (r.photos || []).map((p, j) => photoFile("veg", r, p, j)).join("\n"), a.forest || "", a.growth || ""], 2); });
     const ps = bk.add("植生_出現種").width([12, 10, 22, 7, 7]);
     ps.row(0, ["調査区番号", "階層", "種名", "被度", "群度"], 1); ps.freeze = [1, 0];
     let pr = 1; for (const r of plots) for (const s of r.sp || []) ps.row(pr++, [r.no, LAYER_JP[s.l], s.n, s.c, s.s], 2);
@@ -1948,7 +2211,7 @@ window.Store = (function () {
   async function tplVeg() {
     const bk = XW.book();
     vegSheet(bk, "植生調査票", null);
-    const optKeys = ["pref", "aspect", "micro", "soil", "moist", "human", "ctype"], op = bk.add("選択肢");
+    const optKeys = ["forest", "growth", "aspect", "micro", "soil", "moist", "human", "ctype"], op = bk.add("選択肢");
     optKeys.forEach((k, j) => { const it = VEG.items.find((x) => x.id === k); op.set(0, j, it.label, 1); it.options.forEach((o, i) => op.set(i + 1, j, o, 2)); });
     op.width(optKeys.map(() => 16));
     const sn = bk.add("種名一覧").width([24]); sn.set(0, 0, "種名（入力候補）", 1); SPN.forEach((s, i) => sn.set(i + 1, 0, s, 0));
