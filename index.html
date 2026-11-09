@@ -116,6 +116,20 @@ svg.ic { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-wid
 .field { display: block; margin: 0 0 12px; }
 .lbl { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
 .lbl .req { color: var(--danger); margin-left: 3px; }
+.infobtn { border: 0; background: transparent; color: var(--kc, var(--accent)); width: 30px; height: 26px; margin: -4px 0 -4px 2px; padding: 0; display: inline-grid; place-items: center; vertical-align: middle; border-radius: 50%; }
+.infobtn svg.ic { width: 19px; height: 19px; }
+.infobtn.on { background: var(--green-50); }
+.infopop { background: var(--surface-2); border-left: 3px solid var(--kc, var(--accent)); border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 8px 10px; margin: 0 0 8px; font-size: 12.5px; line-height: 1.5; }
+.infopop p { margin: 4px 0; }
+.scaledesc { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.scaledesc li { display: flex; gap: 8px; }
+.scaledesc b { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-size: 12px; }
+.ztabs { position: sticky; top: -12px; z-index: 2; background: var(--surface); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px 0 8px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
+.ztabs button { border: 1.5px solid var(--line); background: var(--surface); border-radius: var(--r-md); padding: 7px 8px; text-align: left; display: flex; flex-direction: column; min-height: 46px; font-weight: 700; font-size: 13.5px; }
+.ztabs button small { font-weight: 500; font-size: 11px; color: var(--muted); }
+.ztabs button.on { border-color: var(--kc); background: var(--kc); color: #fff; }
+.ztabs button.on small { color: rgba(255,255,255,.85); }
+.ztabs button[data-z="note"] { grid-column: 1 / -1; min-height: 36px; text-align: center; justify-content: center; }
 .help { font-size: 11.5px; color: var(--muted); margin: 4px 0 0; }
 .inp { width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-sm); padding: 10px 11px; font-size: 16px; outline: none; }
 .inp:focus { border-color: var(--kc, var(--accent)); }
@@ -139,6 +153,7 @@ textarea.inp { min-height: 76px; resize: vertical; }
 .scale button.on { border-color: var(--kc, var(--accent)); background: var(--green-50); box-shadow: inset 0 0 0 1px var(--kc, var(--accent)); }
 .scale button.on b { background: var(--kc, var(--accent)); color: #fff; }
 .scale.compact button span { display: none; }
+.scale.compact button b { width: 30px; height: 30px; font-size: 15px; }
 .scale.compact { grid-template-columns: repeat(5, 1fr); }
 .scale.compact button { justify-content: center; }
 .btn { border: 0; border-radius: var(--r-md); padding: 11px 14px; font-weight: 700; font-size: 14.5px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--surface-2); color: var(--fg); min-height: 44px; }
@@ -176,6 +191,9 @@ textarea.inp { min-height: 76px; resize: vertical; }
 .list li > button { width: 100%; border: 0; background: transparent; text-align: left; padding: 10px 2px; display: flex; align-items: center; gap: 10px; }
 .list .dotc { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1.5px solid rgba(0,0,0,.3); }
 .list .main { flex: 1; min-width: 0; }
+.list .chk { width: 22px; height: 22px; flex: none; border: 2px solid var(--line); border-radius: 6px; display: grid; place-items: center; }
+.list .chk.on { background: var(--danger); border-color: var(--danger); color: #fff; }
+.list .chk svg.ic { width: 16px; height: 16px; stroke-width: 3; }
 .list .t1, .list .t2 { display: block; }
 .list .t1 { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list .t2 { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -346,7 +364,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.1.0（2026-11-09）",   // 更新したら sw.js の VERSION も変える
+  version: "1.4.0（2026-11-09）",   // 更新したら sw.js の VERSION も変える
   appTitle: "樹木・植生調査",
   filePrefix: "樹木植生調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -379,12 +397,9 @@ window.APP_CONFIG = {
         { id: "dCalc", type: "calc", calc: "base" },
         { id: "hw", section: "樹高・枝張り", label: "樹高（m）・枝張り（cm）", type: "nums", fields: [{ id: "h", label: "樹高", unit: "m", max: 60 }, { id: "ew", label: "枝張り 東西", unit: "cm", max: 6000 }, { id: "ns", label: "枝張り 南北", unit: "cm", max: 6000 }] },
         { id: "wCalc", type: "calc", calc: "spread" },
-        { id: "s", section: "樹木間隔", label: "樹木間隔 1〜4本目", type: "nums", fields: [1, 2, 3, 4].map((k) => ({ id: "s" + k, label: k + "本目", max: 10000 })), help: "様式に単位の記載がありません。単位をそろえて入力してください" },
+        { id: "s", section: "樹木間隔", label: "樹木間隔 1〜4本目（m）", type: "nums", fields: [1, 2, 3, 4].map((k) => ({ id: "s" + k, label: k + "本目", max: 100 })) },
         { id: "sCalc", type: "calc", calc: "spacing" },
-        { id: "kiban", section: "植栽基盤調査・根系調査", label: "植栽基盤調査", type: "buttons", options: ["有", "無"] },
-        { id: "konkei", label: "根系調査", type: "buttons", options: ["有", "無"] },
-        { id: "katchaku", label: "活着状況（集計表）", type: "buttons", options: ["活着", "枯死"] },
-        { id: "rakuyo", section: "活力度調査（0 良好 ←→ 4 不良）", label: "葉の状態", type: "buttons", options: ["着葉", "落葉（⑤⑥を除外）"], help: "落葉の場合は⑤・⑥を除外して評価します（様式の注記）" },
+        { id: "vHead", section: "活力度調査（0 良好 ←→ 4 不良）", label: "評価の方法", type: "note", help: "各項目を0〜4で評価します。ⓘ を押すと評価基準が出ます。落葉の場合は⑤・⑥を空欄にすると、除いて計算します（様式の注記）。" },
         { id: "v1", label: "①樹勢", type: "scale", base: 0, score: true, required: true,
           desc: ["旺盛な生育状態を示し被害が全くみられない", "一部が幾分影響を受けているが、全体としてあまりめだたない", "一部が枯死するなど異常が明らかに認められる", "全体的に生育状態がきわめて劣悪である", "ほとんど枯死又は枯死"] },
         { id: "v2", label: "②樹形", type: "scale", base: 0, score: true, required: true,
@@ -393,17 +408,17 @@ window.APP_CONFIG = {
           desc: ["枯損はない", "小枝に枯れがある", "新梢や中枝に枯れがある", "著しく枯れている（1/3～1/2枯れ）", "ほとんど枯損している"] },
         { id: "v4", label: "④枝葉の密度", type: "scale", base: 0, score: true, required: true,
           desc: ["枝と密度のバランスがとれている", "0に比べてやや劣る", "やや疎", "枯枝が多く葉の発生が少なく著しく疎", "ほとんど枝葉がない又は枯死"] },
-        { id: "v5", label: "⑤葉の大きさ", type: "scale", base: 0, score: true, required: true, hideIf: { rakuyo: ["落葉（⑤⑥を除外）"] },
+        { id: "v5", label: "⑤葉の大きさ", type: "scale", base: 0, score: true,
           desc: ["葉がすべて十分な大きさ", "所々に小さい葉がある", "全体にやや小さい", "全体に著しく小さい", "わずかな葉しかなく又は枯死、それも小さい"] },
-        { id: "v6", label: "⑥葉色（クロマツの場合）", type: "scale", base: 0, score: true, required: true, hideIf: { rakuyo: ["落葉（⑤⑥を除外）"] },
+        { id: "v6", label: "⑥葉色（クロマツの場合）", type: "scale", base: 0, score: true,
           desc: ["全体に濃い緑色を保っている（アカヤケがない）", "やや薄いが緑色を保っている（アカヤケが全体の50%未満）", "黄色、赤褐色の葉が目立つ（アカヤケが全体の50%以上）", "大部分が薄い緑色（アカヤケがほぼ100%、頂芽に回復の可能性）", "薄い緑色と黄色、赤褐色のみ又は枯死（アカヤケがほぼ100%、頂芽に回復の可能性低）"] },
         { id: "v7", label: "⑦樹皮の傷（剥皮・壊死）", type: "scale", base: 0, score: true, required: true,
           desc: ["傷などほとんどなし", "穿孔・傷が少しあるが、あまり目立たない", "古傷が残る", "傷からの腐朽が著しい", "大きな空洞、剥がれがある又は枯死"] },
         { id: "vCalc", type: "calc", calc: "vitality" },
-        { id: "note", section: "メモ", label: "メモ（調査票には出力されません。一覧表に出力）", type: "text", voice: true },
+        { id: "note", section: "メモ", label: "メモ", type: "text", voice: true, placeholder: "下層植生の有無、リターの堆積状況、その他樹種、病害虫の発生状況など", help: "調査票には出力されません（植生調査・一覧表に出力します）" },
       ],
       // 様式「地上部調査票」のセル
-      tpl: { site: "A3", forest: "C3", growth: "E3", no: "G3", date: "I3", by: "M3", g: ["A6", "B6", "C6", "D6", "E6"], d: ["G6", "H6", "I6", "J6", "K6"], h: "M5",
+      tpl: { site: "A3", forest: "C3", growth: "E3", no: "G3", date: "I3", sp: "K3", spHead: ["K2", "樹種"], by: "M3", g: ["A6", "B6", "C6", "D6", "E6"], d: ["G6", "H6", "I6", "J6", "K6"], h: "M5",
         ew: "A9", ns: "B9", s: ["F9", "G9", "H9", "I9"], kiban: "K8", konkei: "M8", v: ["M13", "M14", "M15", "M16", "M17", "M18", "M19"],
         calc: { gSum: "F6", dSum: "L6", wAvg: "E9", sAvg: "J9", vit: "M21", judge: "M22" },
         // 写真の枠（列番号は0始まり。C23:F25 など）
@@ -418,16 +433,9 @@ window.APP_CONFIG = {
         { id: "age", row: 6, section: "1 樹齢", label: "推定樹齢（年）", type: "number", unit: "年", max: 300 },
         { id: "strType", row: 7, section: "2 構造物の設置状況", label: "種類・規格", type: "line", placeholder: "例：柵1.2m" },
         { id: "strState", row: 8, label: "状態", type: "buttons", options: ["健全", "一部破損", "破損・倒壊"] },
-        { id: "m1", row: 9, section: "3 管理状況（●：実施あり ×：なし）", label: "間伐", type: "buttons", options: ["●", "×"] },
-        { id: "m2", row: 10, label: "下草刈り", type: "buttons", options: ["●", "×"] },
-        { id: "m3", row: 11, label: "枯損木処理", type: "buttons", options: ["●", "×"] },
-        { id: "m4", row: 12, label: "枝打ち", type: "buttons", options: ["●", "×"] },
-        { id: "m5", row: 13, label: "病虫害防除", type: "buttons", options: ["●", "×"] },
-        { id: "m6", row: 14, label: "潅水", type: "buttons", options: ["●", "×"] },
-        { id: "m7", row: 15, label: "補植", type: "buttons", options: ["●", "×"] },
-        { id: "m8", row: 16, label: "その他", type: "buttons", options: ["●", "×"] },
+        { id: "mgmt", rows: [9, 10, 11, 12, 13, 14, 15, 16], section: "3 管理状況", label: "実施した管理（タッチして選択）", type: "multi", options: ["間伐", "下草刈り", "枯損木処理", "枝打ち", "病虫害防除", "潅水", "補植", "その他"], help: "選んだ項目は ●、選ばなかった項目は × で調査票に出力します。「その他」の内容は「備考」タブに入力します" },
         { id: "lowH", row: 17, section: "4 下枝の状況", label: "下枝高（m）", type: "number", unit: "m", max: 30 },
-        { id: "deadState", row: 18, label: "枯れの状態", type: "line" },
+        { id: "deadState", row: 18, label: "枯れの状態", type: "buttons", options: ["あり", "あり（軽微）", "なし"] },
         { id: "deadH", row: 19, label: "枯れ下がり高さ（m）", type: "number", unit: "m", max: 30 },
         { id: "landform", row: 20, section: "5 地形", label: "地形", type: "buttons", options: ["平坦地", "傾斜地", "のり肩", "のり尻"] },
         { id: "slope", row: 21, label: "斜面傾斜角（°）", type: "number", unit: "°", max: 90 },
@@ -643,17 +651,18 @@ window.Store = (function () {
     const sp = toKata(String(t.sp ?? "").trim()), site = String(t.site ?? "").trim(), tno = String(t.tno ?? "").trim();
     let forest = String(t.forest ?? "").trim(); forest = /針/.test(forest) ? "針葉樹" : /広/.test(forest) ? "広葉樹" : "";
     let growth = String(t.growth ?? "").trim(); growth = /不/.test(growth) ? "不良" : /良/.test(growth) ? "良好" : "";
-    return { key: treeKey(site, tno), tno, sp, site, forest, growth, lat: +t.lat, lon: +t.lon, memo: String(t.memo ?? ""), src };
+    const yn = (v) => { v = String(v ?? "").trim(); return /^(有|あり|○|〇|●|1|yes)$/i.test(v) ? "有" : /^(無|なし|×|0|no)$/i.test(v) ? "無" : ""; };
+    return { key: treeKey(site, tno), tno, sp, site, forest, growth, kiban: yn(t.kiban), konkei: yn(t.konkei), lat: +t.lat, lon: +t.lon, memo: String(t.memo ?? ""), src };
   }
   async function loadTrees() {
-    const led = await Store.kv.get("ledger"), local = await Store.kv.get("localtrees", []), fixes = await Store.kv.get("fixes", {});
+    const led = await Store.kv.get("ledger"), local = await Store.kv.get("localtrees", []), fixes = await Store.kv.get("fixes", {}), deleted = await Store.kv.get("deleted", {});
     dataInfo = led ? { file: led.file, loadedAt: led.loadedAt, count: (led.trees || []).length } : null;
     T = []; TIDX = new Map();
     for (const [list, src] of [[(led && led.trees) || [], "base"], [local, "local"]]) for (const raw of list) {
       const t = normTree(raw, src);
-      if (!t.tno || !isFinite(t.lat) || !isFinite(t.lon) || TIDX.has(t.key)) continue;
+      if (!t.tno || !isFinite(t.lat) || !isFinite(t.lon) || TIDX.has(t.key) || (src === "base" && deleted[t.key])) continue;
       const f = fixes[t.key];
-      if (f) { if (f.lat != null) { t.orig = [t.lon, t.lat]; t.lat = f.lat; t.lon = f.lon; t.moved = true; } for (const k of ["sp", "forest", "growth", "memo"]) if (f[k] != null) { t[k] = f[k]; t.edited = true; } }
+      if (f) { if (f.lat != null) { t.orig = [t.lon, t.lat]; t.lat = f.lat; t.lon = f.lon; t.moved = true; } for (const k of ["sp", "forest", "growth", "kiban", "konkei", "memo"]) if (f[k] != null) { t[k] = f[k]; t.edited = true; } }
       TIDX.set(t.key, T.length); T.push(t);
     }
     mask = new Uint8Array(T.length).fill(1);
@@ -840,6 +849,7 @@ window.Store = (function () {
   const PANE_KIND = { chijo: "chijo", chijoForm: "chijo", gaikyo: "gaikyo", gaikyoForm: "gaikyo", veg: "veg", vegForm: "veg", menu: "", filter: "" };
   const NAV_OF = { chijoForm: "chijo", gaikyoForm: "gaikyo", vegForm: "veg" };
   function openPane(name, title, html, after) {
+    if (name !== "chijo") { S.delMode = false; S.delSel = null; }
     S.pane = name;
     const sh = $("#sheet"); sh.hidden = false; sh.dataset.k = PANE_KIND[name] || "";
     $("#sheetTitle").textContent = title;
@@ -900,13 +910,21 @@ window.Store = (function () {
     light: (a, c, z) => { const p = z ? z + "|" : "", s = nv(a[p + "lightSite"]), r = nv(a[p + "lightRef"]); return s != null && r ? `相対光量子束密度（参考）：<b>${Math.round(s / r * 1000) / 10}</b> %` : "調査地と対照地の測定値から相対値（%）を計算します（参考）"; },
   };
   const hasVoice = () => !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  // 解説（help・評価基準）は ⓘ を押したときだけ出す
+  function infoHTML(it) {
+    const parts = [];
+    if (it.type === "scale") parts.push(`<ul class="scaledesc">${it.desc.map((d, k) => `<li><b>${k + (it.base ?? 1)}</b>${esc(d)}</li>`).join("")}</ul>`);
+    if (it.help) parts.push(`<p>${esc(it.help)}</p>`);
+    return parts.length ? { btn: `<button type="button" class="infobtn" data-info="${esc(it.id)}" aria-label="${esc(it.label || "")}の解説" aria-expanded="false">${ic("info")}</button>`, box: `<div class="infopop" data-infofor="${esc(it.id)}" hidden>${parts.join("")}</div>` } : { btn: "", box: "" };
+  }
   function fieldHTML(it, ans, ctx) {
-    const v = ans[it.id], req = it.required ? '<span class="req">*</span>' : "";
-    const lbl = `<span class="lbl">${esc(it.label)}${req}</span>`;
+    const v = ans[it.id], req = it.required ? '<span class="req">*</span>' : "", inf = infoHTML(it);
+    const lbl = `<span class="lbl">${esc(it.label)}${req}${inf.btn}</span>${inf.box}`;
+    if (it.type === "note") return `${it.section ? `<div class="sec">${esc(it.section)}</div>` : ""}<div class="field" data-item="${it.id}">${lbl}</div>`;
     let inner = "";
     if (it.type === "buttons") inner = `<div class="seg">${it.options.map((o) => `<button type="button" data-a="${it.id}" data-v="${esc(o)}"${v === o ? ' class="on"' : ""}>${esc(o)}</button>`).join("")}</div>`;
     else if (it.type === "multi") inner = `<div class="seg">${it.options.map((o) => `<button type="button" data-a="${it.id}" data-v="${esc(o)}" data-multi="1"${(v || []).includes(o) ? ' class="on"' : ""}>${esc(o)}</button>`).join("")}</div>`;
-    else if (it.type === "scale") { const b0 = it.base ?? 1; inner = `<div class="scale${S.compactScale ? " compact" : ""}" style="${S.compactScale ? `grid-template-columns:repeat(${it.desc.length},1fr)` : ""}">${it.desc.map((d, k) => `<button type="button" data-a="${it.id}" data-v="${k + b0}"${String(v) === String(k + b0) ? ' class="on"' : ""}><b>${k + b0}</b><span>${esc(d)}</span></button>`).join("")}</div>`; }
+    else if (it.type === "scale") { const b0 = it.base ?? 1; inner = `<div class="scale compact" style="grid-template-columns:repeat(${it.desc.length},1fr)">${it.desc.map((d, k) => `<button type="button" data-a="${it.id}" data-v="${k + b0}" title="${esc(d)}"${String(v) === String(k + b0) ? ' class="on"' : ""}><b>${k + b0}</b></button>`).join("")}</div>`; }
     else if (it.type === "calc") return `<div class="calc" data-item="${it.id}" data-calc="${it.calc}"${it.zone ? ` data-zone="${it.zone}"` : ""}></div>`;
     else if (it.type === "select") inner = `<select class="inp" data-a="${it.id}"><option value="">（選択）</option>${it.options.map((o) => `<option${v === o ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
     else if (it.type === "number") inner = `<div class="unitbox"><input class="inp" data-a="${it.id}" data-num="1" inputmode="decimal" value="${esc(v ?? "")}"><span class="unit">${esc(it.unit || "")}</span></div>`;
@@ -917,7 +935,7 @@ window.Store = (function () {
     else if (it.type === "text") inner = `<textarea class="inp" data-a="${it.id}" placeholder="${esc(it.placeholder || "")}">${esc(v ?? "")}</textarea>${it.voice && hasVoice() ? `<button type="button" class="btn line mini" data-voice="${it.id}" style="margin-top:6px">${ic("mic")}音声で入力</button>` : ""}`;
     let extra = "";
     if (it.suggest === "vitality") extra = `<div class="calc" id="vitBox"></div>`;
-    return `${it.section ? `<div class="sec">${esc(it.section)}</div>` : ""}<div class="field" data-item="${it.id}"${visible(it, ans, ctx) ? "" : " hidden"}>${extra}${it.type === "nums" ? `<span class="lbl">${esc(it.label)}${req}</span>` : lbl}${inner}${it.help ? `<p class="help">${esc(it.help)}</p>` : ""}</div>`;
+    return `${it.section ? `<div class="sec">${esc(it.section)}</div>` : ""}<div class="field" data-item="${it.id}"${visible(it, ans, ctx) ? "" : " hidden"}>${extra}${lbl}${inner}</div>`;
   }
   function itemsHTML(items, ans, ctx) { return items.map((it) => fieldHTML(it, ans, ctx)).join(""); }
   function refreshVisibility() {
@@ -955,6 +973,8 @@ window.Store = (function () {
   function bindSheet() {
     const body = $("#sheetBody");
     body.addEventListener("click", (e) => {
+      const ib = e.target.closest("[data-info]");
+      if (ib) { e.preventDefault(); const box = ib.closest(".field, .infohost, label")?.parentElement?.querySelector(`[data-infofor="${CSS.escape(ib.dataset.info)}"]`) || $(`[data-infofor="${CSS.escape(ib.dataset.info)}"]`, body); if (box) { box.hidden = !box.hidden; ib.setAttribute("aria-expanded", String(!box.hidden)); ib.classList.toggle("on", !box.hidden); } return; }
       const c = S.cur;
       const b = e.target.closest("[data-a][data-v]");
       if (b && c) {
@@ -1010,15 +1030,35 @@ window.Store = (function () {
     if (!T.length) return `<div class="empty">${ic("tree")}<p>樹木データがまだありません。<br>樹木データ（Excel）を読み込むか、地図で樹木を追加してください。</p>
       <div class="btnrow"><button class="btn main" data-act="importTrees">樹木データを読み込む</button></div><div class="btnrow" style="margin-top:8px"><button class="btn line" data-act="tplTrees">${ic("down")}樹木データの様式</button><button class="btn line" data-act="addTree">${ic("plus")}地図で追加</button></div></div>`;
     const tab = S.chijoTab, q = toKata(S.F.q.trim()).toLowerCase();
-    let rows = idx.filter((i) => tab === "all" || statusOf(treeRec(i)) === tab);
+    let rows = idx.filter((i) => tab === "all" || (tab === "local" ? T[i].src === "local" : statusOf(treeRec(i)) === tab));
     if (q) rows = rows.filter((i) => `${T[i].tno}_${T[i].sp}`.toLowerCase().includes(q));
     rows.sort((a, b) => T[a].site.localeCompare(T[b].site, "ja") || T[a].tno.localeCompare(T[b].tno, "ja", { numeric: true }));
-    const shown = rows.slice(0, 400);
-    return `<div class="stat"><div><b>${fmt(cnt.done)}</b><span>完了</span></div><div><b>${fmt(cnt.draft)}</b><span>下書き</span></div><div><b>${fmt(cnt.none)}</b><span>未調査</span></div></div>
-      <div class="tabs">${[["all", "すべて"], ["none", "未調査"], ["draft", "下書き"], ["done", "完了"]].map(([k, l]) => `<button data-act="chijoTab" data-k="${k}"${tab === k ? ' class="on"' : ""}>${l}</button>`).join("")}</div>
+    const shown = rows.slice(0, 400), del = S.delMode, sel = S.delSel || new Set();
+    S.delShown = rows.map((i) => T[i].key);
+    const nLocal = idx.filter((i) => T[i].src === "local").length;
+    return `${del ? `<p class="notebox" style="margin-top:0"><b>削除する木をタッチして選んでください。</b>調査記録・写真も一緒に削除されます。</p>` : `<div class="stat"><div><b>${fmt(cnt.done)}</b><span>完了</span></div><div><b>${fmt(cnt.draft)}</b><span>下書き</span></div><div><b>${fmt(cnt.none)}</b><span>未調査</span></div></div>`}
+      <div class="tabs">${[["all", "すべて"], ["none", "未調査"], ["draft", "下書き"], ["done", "完了"], ...(nLocal || tab === "local" ? [["local", `現地で追加（${nLocal}）`]] : [])].map(([k, l]) => `<button data-act="chijoTab" data-k="${k}"${tab === k ? ' class="on"' : ""}>${l}</button>`).join("")}</div>
       ${shown.length ? `<ul class="list">${shown.map((i) => { const t = T[i], r = treeRec(i), st = statusOf(r);
-        return `<li><button data-act="openTree" data-i="${i}"><span class="dotc" style="background:${ST_COLOR[st]}"></span><span class="main"><span class="t1">${esc(t.tno)}_${esc(t.sp || "樹種不明")}</span><span class="t2">${esc(t.site || "調査地なし")}・${esc(t.forest || "樹林の種類なし")}・${esc(t.growth || "生育状況なし")}${r && vitality(SV.chijo.items, r.ans, {}) ? `・活力度 ${vitality(SV.chijo.items, r.ans, {}).avg.toFixed(1)}（${esc(vitality(SV.chijo.items, r.ans, {}).cls)}）` : ""}</span></span>${statusBadge(st)}</button></li>`; }).join("")}</ul>${rows.length > shown.length ? `<p class="small muted">ほか ${fmt(rows.length - shown.length)}本（検索で絞り込めます）</p>` : ""}`
-      : `<p class="empty">該当する木はありません</p>`}`;
+        return `<li><button data-act="${del ? "toggleDel" : "openTree"}" data-i="${i}"${del ? ` aria-pressed="${sel.has(t.key)}"` : ""}>${del ? `<span class="chk${sel.has(t.key) ? " on" : ""}">${sel.has(t.key) ? ic("check") : ""}</span>` : `<span class="dotc" style="background:${ST_COLOR[st]}"></span>`}<span class="main"><span class="t1">${esc(t.tno)}_${esc(t.sp || "樹種不明")}</span><span class="t2">${esc(t.site || "調査地なし")}・${esc(t.forest || "樹林の種類なし")}・${esc(t.growth || "生育状況なし")}${t.src === "local" ? "・現地で追加" : ""}${r && vitality(SV.chijo.items, r.ans, {}) ? `・活力度 ${vitality(SV.chijo.items, r.ans, {}).avg.toFixed(1)}（${esc(vitality(SV.chijo.items, r.ans, {}).cls)}）` : ""}</span></span>${statusBadge(st)}</button></li>`; }).join("")}</ul>${rows.length > shown.length ? `<p class="small muted">ほか ${fmt(rows.length - shown.length)}本（検索で絞り込めます）</p>` : ""}`
+      : `<p class="empty">該当する木はありません</p>`}
+      ${del ? `<div class="sticky-foot"><button class="btn line" data-act="delCancel" style="flex:0 0 auto">やめる</button><button class="btn line" data-act="delAll" style="flex:0 0 auto">${shown.length && shown.every((i) => sel.has(T[i].key)) ? "全解除" : "全選択"}</button><button class="btn danger" style="flex:1 1 auto" data-act="delExec"${sel.size ? "" : " disabled"}>${ic("trash")}削除（${sel.size}本）</button></div>`
+        : `<div class="btnrow" style="margin-top:14px"><button class="btn line" data-act="delStart">${ic("trash")}樹木を選んで削除</button></div>`}`;
+  }
+  // 樹木の削除：現地で追加した木はデータから消す。読み込んだ樹木データの木は「削除済み」として表示しない
+  async function deleteTrees(keys) {
+    keys = keys.filter((k) => TIDX.has(k)); if (!keys.length) return false;
+    const ts = keys.map((k) => T[TIDX.get(k)]), recs = keys.map((k) => R.get(recId.chijo(k))).filter(Boolean), nPh = recs.reduce((n, r) => n + (r.photos || []).length, 0);
+    const list = ts.slice(0, 8).map((t) => `${esc(t.site)} ${esc(t.tno)}_${esc(t.sp)}`).join("<br>") + (ts.length > 8 ? `<br>ほか ${ts.length - 8}本` : "");
+    if (!(await dialog({ title: `${ts.length}本の樹木を削除しますか？`, body: `<p class="small">${list}</p>${recs.length ? `<p><b style="color:var(--danger)">調査記録 ${recs.length}件・写真 ${nPh}枚も削除されます。</b></p>` : ""}<p class="small muted">元に戻せません。読み込んだ樹木データの木は、樹木データを読み込み直すと再び表示されます。</p>`, ok: `${ts.length}本を削除`, danger: true }))) return false;
+    const set = new Set(keys);
+    const local = (await Store.kv.get("localtrees", [])).filter((t) => !set.has(treeKey(String(t.site ?? "").trim(), String(t.tno ?? "").trim())));
+    await Store.kv.put("localtrees", local);
+    const deleted = await Store.kv.get("deleted", {}), fixes = await Store.kv.get("fixes", {}), at = new Date().toISOString();
+    for (const t of ts) { if (t.src === "base") deleted[t.key] = { at, by: S.name }; delete fixes[t.key]; }
+    await Store.kv.put("deleted", deleted); await Store.kv.put("fixes", fixes);
+    for (const r of recs) { for (const p of r.photos || []) { await Store.photos.remove(p.id); PH_URL.delete(p.id); } await Store.recs.remove(r.id); R.delete(r.id); }
+    S.sel = null; await loadTrees(); fillSiteLists(); applyFilter();
+    toast(`${ts.length}本を削除しました`); return true;
   }
   function showChijoList() { S.cur = null; openPane("chijo", `地上部調査${S.site ? "：" + S.site : ""}`, chijoListHTML()); }
 
@@ -1033,9 +1073,10 @@ window.Store = (function () {
     openPane("chijoForm", `${t.tno}_${t.sp || "樹種不明"}`, `
       <dl class="infobox"><dt>樹木番号</dt><dd>${esc(t.tno)}</dd><dt>樹種</dt><dd>${esc(t.sp || "—")}</dd><dt>調査地</dt><dd>${esc(t.site || "—")}</dd>
         <dt>樹林の種類</dt><dd>${esc(t.forest || "—")}</dd><dt>生育状況</dt><dd>${t.growth ? `<span class="badge ${t.growth === "良好" ? "good" : "bad"}">${esc(t.growth)}</span>` : "—"}</dd>
+        <dt>植栽基盤調査</dt><dd>${esc(t.kiban || "—")}</dd><dt>根系調査</dt><dd>${esc(t.konkei || "—")}</dd>
         <dt>位置</dt><dd>${t.lat.toFixed(6)}, ${t.lon.toFixed(6)}${t.moved ? '<span class="badge" style="margin-left:4px">現地で修正</span>' : ""}</dd>${t.memo ? `<dt>備考</dt><dd>${esc(t.memo)}</dd>` : ""}
         <dt>状態</dt><dd><span id="curBadge">${statusBadge(statusOf(old))}</span></dd></dl>
-      <div class="btnrow" style="margin-bottom:6px"><button class="btn line mini" data-act="editTree">${ic("edit")}樹木情報を直す</button><button class="btn line mini" data-act="moveTree">${ic("move")}位置を直す</button><button class="btn line mini" data-act="flyTree">${ic("mapview")}地図で見る</button></div>
+      <div class="btnrow" style="margin-bottom:6px"><button class="btn line mini" data-act="editTree">${ic("edit")}樹木情報を直す</button><button class="btn line mini" data-act="moveTree">${ic("move")}位置を直す</button><button class="btn line mini" data-act="flyTree">${ic("mapview")}地図で見る</button><button class="btn danger mini" data-act="delTree">${ic("trash")}この木を削除</button></div>
       ${metaHTML(rec)}
       ${itemsHTML(items, rec.ans, ctx)}
       <div class="sec">写真</div><div id="phHost"></div>
@@ -1074,9 +1115,10 @@ window.Store = (function () {
   async function editTree() {
     const c = S.cur; if (!c || c.kind !== "chijo") return; const t = T[c.i];
     const v = await formDialog({ title: "樹木情報を直す", body: `<p class="small muted">この端末での修正として保存し、出力にも反映します。樹木番号・調査地は変更できません。</p>`,
-      fields: [{ id: "sp", label: "樹種", value: t.sp, list: "spList" }, { id: "forest", label: "樹林の種類", value: t.forest, options: CFG.forestTypes }, { id: "growth", label: "生育状況", value: t.growth, options: CFG.growthTypes }, { id: "memo", label: "備考", value: t.memo }], ok: "保存" });
+      fields: [{ id: "sp", label: "樹種", value: t.sp, list: "spList" }, { id: "forest", label: "樹林の種類", value: t.forest, options: CFG.forestTypes }, { id: "growth", label: "生育状況", value: t.growth, options: CFG.growthTypes },
+        { id: "kiban", label: "植栽基盤調査", value: t.kiban, options: ["有", "無"] }, { id: "konkei", label: "根系調査", value: t.konkei, options: ["有", "無"] }, { id: "memo", label: "備考", value: t.memo }], ok: "保存" });
     if (!v) return;
-    const fixes = await Store.kv.get("fixes", {}); fixes[t.key] = { ...(fixes[t.key] || {}), sp: toKata(v.sp), forest: v.forest, growth: v.growth, memo: v.memo, at: new Date().toISOString(), by: S.name };
+    const fixes = await Store.kv.get("fixes", {}); fixes[t.key] = { ...(fixes[t.key] || {}), sp: toKata(v.sp), forest: v.forest, growth: v.growth, kiban: v.kiban, konkei: v.konkei, memo: v.memo, at: new Date().toISOString(), by: S.name };
     await Store.kv.put("fixes", fixes); await loadTrees(); applyFilter(); openChijo(c.i); toast("樹木情報を保存しました");
   }
 
@@ -1098,13 +1140,17 @@ window.Store = (function () {
   // 調査区（列）ごとの項目。id は「調査区|項目」
   const GK = SV.gaikyo;
   const zoneItems = (z) => [
-    { id: `${z}|na`, label: "この調査区", type: "buttons", options: ["対象外"], help: "該当しない調査区は「対象外」にします（様式の調査区名の欄に「対象外」と出力）" },
-    { id: `${z}|name`, label: "調査区名（現地に合わせて変更可）", type: "line", placeholder: GK.zones.find((x) => x[0] === z)[1], hideIf: { [`${z}|na`]: ["対象外"] } },
-    ...GK.rows.map((r) => ({ ...r, id: `${z}|${r.id}`, zone: z, hideIf: { [`${z}|na`]: ["対象外"] } })),
+    { id: `${z}|name`, label: "調査区名（現地に合わせて変更可）", type: "line", placeholder: GK.zones.find((x) => x[0] === z)[1] },
+    ...GK.rows.map((r) => ({ ...r, id: `${z}|${r.id}`, zone: z })),
   ];
-  const noteItems = () => [{ id: "otherName", section: "「その他」の内容", label: "3 管理状況「その他（ ）」に入れる内容", type: "line" },
-    ...GK.rows.filter((r) => r.row).map((r, k, arr) => ({ id: "note|" + r.row, section: k === 0 ? "備考（行ごと）" : undefined, label: `${(arr.slice(0, k + 1).reverse().find((x) => x.section) || {}).section || ""}：${r.label}`, type: "line" }))];
-  const zoneName = (ans, z) => ans[`${z}|na`] === "対象外" ? "対象外" : ans[`${z}|name`] || GK.zones.find((x) => x[0] === z)[1];
+  // 様式の行ごとの定義（管理状況は選択肢1つが1行）。get(ans, 調査区) で調査票に書く値
+  const zoneHasData = (a, z) => GK.rows.some((r) => filled(a[`${z}|${r.id}`]));
+  const gRowDefs = () => GK.rows.flatMap((r) => r.rows ? r.options.map((o, k) => ({ row: r.rows[k], label: o, section: r.section, item: r,
+    get: (a, z) => (a[`${z}|${r.id}`] || []).includes(o) ? "●" : zoneHasData(a, z) ? "×" : "" }))
+    : r.row ? [{ row: r.row, label: r.label, section: r.section, item: r, get: (a, z) => { const v = a[`${z}|${r.id}`]; return r.type === "number" ? nv(v) ?? "" : ansText(v); } }] : []);
+  const noteItems = () => { let sec = ""; return [{ id: "otherName", section: "「その他」の内容", label: "3 管理状況「その他（ ）」に入れる内容", type: "line" },
+    ...gRowDefs().map((d, k) => { if (d.section) sec = d.section; return { id: "note|" + d.row, section: k === 0 ? "備考（行ごと）" : undefined, label: `${sec}：${d.label}`, type: "line" }; })]; };
+  const zoneName = (ans, z) => ans[`${z}|name`] || GK.zones.find((x) => x[0] === z)[1];
   function openGaikyo(site) {
     const id = recId.gaikyo(site), old = R.get(id), sm = siteSummary(site);
     const rec = old ? JSON.parse(JSON.stringify(old)) : { id, kind: "gaikyo", site, status: "", ans: {}, photos: [], date: today(), by: S.name, lat: null, lon: null };
@@ -1117,7 +1163,7 @@ window.Store = (function () {
       <div class="btnrow" style="margin-bottom:6px"><button class="btn line mini" data-act="posHere">${ic("locate")}現在地を記録</button>${sm.n ? `<button class="btn line mini" data-act="fitSite" data-site="${esc(site)}">${ic("mapview")}地図で見る</button>` : ""}</div>
       ${metaHTML(rec)}${itemsHTML(GK.head, rec.ans, {})}
       <div class="sec">調査区ごとの記入</div>
-      <div class="tabs" id="gzTabs"></div>
+      <div class="ztabs" id="gzTabs" role="tablist"></div>
       <div id="gzBody"></div>
       <div class="sec">写真</div><div id="phHost"></div>
       <div class="sticky-foot">${old ? `<button class="btn danger" data-act="delRec">${ic("trash")}</button>` : ""}<button class="btn line" data-act="backList">一覧へ</button><button class="btn main" data-act="doneRec">${old && old.status === "done" ? "完了済み" : "調査完了"}</button></div>`,
@@ -1127,7 +1173,7 @@ window.Store = (function () {
     const c = S.cur; if (!c || c.kind !== "gaikyo") return;
     const a = c.rec.ans, z = S.gZone;
     const filledN = (zz) => GK.rows.filter((r) => filled(a[`${zz}|${r.id}`])).length;
-    $("#gzTabs").innerHTML = GK.zones.map(([k]) => `<button data-act="gZone" data-z="${k}"${z === k ? ' class="on"' : ""}>${esc(zoneName(a, k))}${a[`${k}|na`] === "対象外" ? "" : `（${filledN(k)}）`}</button>`).join("") + `<button data-act="gZone" data-z="note"${z === "note" ? ' class="on"' : ""}>備考</button>`;
+    $("#gzTabs").innerHTML = GK.zones.map(([k]) => `<button data-act="gZone" data-z="${k}"${z === k ? ' class="on"' : ""}><span>${esc(zoneName(a, k))}</span><small>${filledN(k)}/${GK.rows.length}項目</small></button>`).join("") + `<button data-act="gZone" data-z="note"${z === "note" ? ' class="on"' : ""}>備考</button>`;
     const its = z === "note" ? noteItems() : zoneItems(z);
     $("#gzBody").innerHTML = (z !== "note" ? `<div class="btnrow" style="margin-bottom:8px"><button class="btn line mini" data-act="gCopy">${ic("file")}ほかの調査区から写す</button></div>` : "") + itemsHTML(its, a, {});
     paintIcons($("#gzBody")); refreshVisibility();
@@ -1336,7 +1382,7 @@ window.Store = (function () {
     document.body.classList.add("adding"); $("#placeBar").hidden = false; $("#crosshair").removeAttribute("hidden"); $("#placeMsg").innerHTML = msg; drawLabels();
     if (center) map.easeTo({ center, zoom: Math.max(map.getZoom(), 18.5), padding: { top: 0, bottom: 0, left: 0, right: 0 } });
   }
-  function stopPlace() { document.body.classList.remove("adding"); $("#placeBar").hidden = true; $("#crosshair").setAttribute("hidden", ""); PL = null; drawLabels(); }
+  function stopPlace() { if (!PL && $("#placeBar").hidden) return; document.body.classList.remove("adding"); $("#placeBar").hidden = true; $("#crosshair").setAttribute("hidden", ""); PL = null; drawLabels(); }
   function initPlace() {
     $("#placeCancel").onclick = stopPlace;
     $("#placeHere").onclick = async () => { const p = await getPosition(); if (p) map.easeTo({ center: [p.lon, p.lat], zoom: Math.max(map.getZoom(), 18.5) }); };
@@ -1349,7 +1395,8 @@ window.Store = (function () {
   async function addTreeAt(p) {
     const site = S.site || "";
     const v = await formDialog({ title: "樹木を追加", fields: [{ id: "site", label: "調査地", value: site, list: "siteList", required: true }, { id: "tno", label: "樹木番号", value: nextTreeNo(site), required: true }, { id: "sp", label: "樹種", list: "spList", required: true },
-      { id: "forest", label: "樹林の種類", value: "", options: CFG.forestTypes }, { id: "growth", label: "生育状況", value: "", options: CFG.growthTypes }], ok: "追加" });
+      { id: "forest", label: "樹林の種類", value: "", options: CFG.forestTypes }, { id: "growth", label: "生育状況", value: "", options: CFG.growthTypes },
+      { id: "kiban", label: "植栽基盤調査", value: "", options: ["有", "無"] }, { id: "konkei", label: "根系調査", value: "", options: ["有", "無"] }], ok: "追加" });
     if (!v) return;
     const key = treeKey(v.site, v.tno);
     if (TIDX.has(key)) { toast(`${v.site}の樹木番号「${v.tno}」はすでにあります`, 3500); return; }
@@ -1383,6 +1430,12 @@ window.Store = (function () {
     switch (a) {
       case "chijoTab": S.chijoTab = d.k; showChijoList(); break;
       case "openTree": openChijo(+d.i); break;
+      case "delTree": if (await deleteTrees([T[c.i].key])) showChijoList(); break;
+      case "delStart": S.delMode = true; S.delSel = new Set(); showChijoList(); break;
+      case "delCancel": S.delMode = false; S.delSel = null; showChijoList(); break;
+      case "toggleDel": { const k = T[+d.i].key; S.delSel.has(k) ? S.delSel.delete(k) : S.delSel.add(k); const top = $("#sheetBody").scrollTop; showChijoList(); $("#sheetBody").scrollTop = top; break; }
+      case "delAll": { const all = (S.delShown || []).slice(0, 400), on = all.length && all.every((k) => S.delSel.has(k)); all.forEach((k) => on ? S.delSel.delete(k) : S.delSel.add(k)); const top = $("#sheetBody").scrollTop; showChijoList(); $("#sheetBody").scrollTop = top; break; }
+      case "delExec": if (await deleteTrees([...S.delSel])) { S.delMode = false; S.delSel = null; } showChijoList(); break;
       case "addTree": startTreeAdd(); break;
       case "editTree": editTree(); break;
       case "moveTree": { const t = T[c.i], i = c.i; startPlace(`地図を動かして <b>＋</b> を「${esc(t.tno)}_${esc(t.sp)}」の正しい位置に合わせてください`, async (p) => {
@@ -1393,7 +1446,7 @@ window.Store = (function () {
       case "nextTree": { const n = nextTreeIndex(c ? c.i : null); if (n == null) toast("未調査の木はありません"); else openChijo(n); break; }
       case "doneRec": doneRec(); break;
       case "openGaikyo": openGaikyo(d.site); break;
-      case "gZone": S.gZone = d.z; renderGZone(); break;
+      case "gZone": S.gZone = d.z; renderGZone(); { const t = $("#gzTabs"), b = $("#sheetBody"); if (t && t.getBoundingClientRect().top < b.getBoundingClientRect().top) b.scrollTop += t.getBoundingClientRect().top - b.getBoundingClientRect().top - 4; } break;
       case "gCopy": gCopy(); break;
       case "addSite": { const s = await addSite(); if (s) openGaikyo(s); break; }
       case "posHere": setCurPos(await getPosition()); break;
@@ -1517,7 +1570,9 @@ window.Store = (function () {
     ["forest", "樹林の種類", "広葉／針葉（「広葉樹」「針葉樹」でも可）", ["樹林の種類", "樹林", "林種", "広針"]],
     ["growth", "生育状況", "良好／不良", ["生育状況", "生育", "樹勢区分"]],
     ["tno", "樹木番号", "必須。同じ調査地の中で重複しない番号", ["樹木番号", "樹木no", "番号", "no"]],
-    ["sp", "樹種", "必須。例：スギ、コナラ", ["樹種", "樹種名", "種名"]],
+    ["sp", "樹種", "必須。例：クロマツ、コナラ", ["樹種", "樹種名", "種名"]],
+    ["kiban", "植栽基盤調査", "有／無（地上部調査票の「植栽基盤調査」欄に出力）", ["植栽基盤調査", "植栽基盤"]],
+    ["konkei", "根系調査", "有／無（地上部調査票の「根系調査」欄に出力）", ["根系調査", "根系"]],
     ["lat", "緯度", "位置は「緯度・経度」か「X座標・Y座標・座標系」のどちらかが必須。例：35.6812", ["緯度", "lat"]],
     ["lon", "経度", "例：139.7671", ["経度", "lon", "lng"]],
     ["x", "X座標(m)", "平面直角座標の X（南北方向・北が正）", ["x座標", "x"]],
@@ -1585,22 +1640,22 @@ window.Store = (function () {
     info.set(11, 0, "地上部調査票・概況調査票は、様式どおりのExcelを別に出力します。このファイルは集計・確認用の一覧です。「植生_調査区」「植生_出現種」は植生野帳アプリの読み込み形式と同じ列です。", 8).merge(11, 0, 11, 1); info.heights[11] = 44;
     // 地上部調査（1本1行）
     const cols = itemCols(SV.chijo.items);
-    const head = ["調査地", "樹木番号", "樹種", "区分", "状況", "緯度", "経度", "調査状況", "調査日", "調査者", ...cols.map((c) => c.head), "幹周 合成値(cm)", "地際直径 合成値(mm)", "幹周(地際)(cm)", "枝張り 平均(m)", "樹木間隔 平均", "活力度", "判定", "写真枚数", "写真ファイル"];
-    const sh = bk.add("地上部調査一覧").width([14, 8, 12, 6, 6, 11, 12, 8, 11, 10, ...cols.map((c) => c.it.type === "text" ? 30 : c.it.type === "buttons" ? 9 : 7), 9, 9, 9, 9, 9, 7, 9, 6, 40]);
+    const head = ["調査地", "樹木番号", "樹種", "区分", "状況", "植栽基盤調査", "根系調査", "緯度", "経度", "調査状況", "調査日", "調査者", ...cols.map((c) => c.head), "幹周 合成値(cm)", "地際直径 合成値(mm)", "幹周(地際)(cm)", "枝張り 平均(m)", "樹木間隔 平均", "活力度", "判定", "写真枚数", "写真ファイル"];
+    const sh = bk.add("地上部調査一覧").width([14, 8, 12, 6, 6, 8, 8, 11, 12, 8, 11, 10, ...cols.map((c) => c.it.type === "text" ? 30 : c.it.type === "buttons" ? 9 : 7), 9, 9, 9, 9, 9, 7, 9, 6, 40]);
     sh.row(0, head, 1); sh.heights[0] = 48; sh.freeze = [1, 3];
     trees.forEach((t, k) => {
       const r = R.get(recId.chijo(t.key)), ans = r ? r.ans : {}, m = treeMetrics(ans);
-      sh.row(k + 1, [t.site, t.tno, t.sp, forestShort(t.forest), t.growth, isFinite(t.lat) ? +t.lat.toFixed(7) : "", isFinite(t.lon) ? +t.lon.toFixed(7) : "", ST_LABEL[statusOf(r)] + (t.orphan ? "（樹木データにない木）" : ""), r ? r.date : "", r ? r.by : "",
+      sh.row(k + 1, [t.site, t.tno, t.sp, forestShort(t.forest), t.growth, t.kiban || "", t.konkei || "", isFinite(t.lat) ? +t.lat.toFixed(7) : "", isFinite(t.lon) ? +t.lon.toFixed(7) : "", ST_LABEL[statusOf(r)] + (t.orphan ? "（樹木データにない木）" : ""), r ? r.date : "", r ? r.by : "",
         ...cols.map((c) => r ? colVal(c, ans, {}) : ""), m.g ? m.g.val : "", m.d ? m.d.val : "", m.d ? Math.round(Math.PI * m.d.val / 10 * 10) / 10 : "", m.w != null ? Math.round(m.w) / 100 : "", m.s ?? "", m.vit ? m.vit.avg : "", m.vit ? m.vit.cls : "", r ? (r.photos || []).length : "", r ? (r.photos || []).map((p, j) => photoFile("chijo", r, p, j)).join("\n") : ""], 2);
     });
     // 概況調査（調査地×調査区で1行）
-    const GKr = GK.rows.filter((x) => x.row);
-    const gs = bk.add("概況調査一覧").width([14, 14, 8, 11, 10, 6, ...GKr.map((x) => x.type === "text" ? 24 : 10), 30]);
-    gs.row(0, ["調査地", "調査区", "調査状況", "調査日", "調査者", "天候", ...GKr.map((x) => `${x.label}${x.id === "m8" ? "（その他）" : ""}`), "備考"], 1); gs.heights[0] = 48; gs.freeze = [1, 2];
+    const GKr = gRowDefs();
+    const gs = bk.add("概況調査一覧").width([14, 14, 8, 11, 10, 6, ...GKr.map((x) => x.item.type === "text" ? 24 : 10), 30]);
+    gs.row(0, ["調査地", "調査区", "調査状況", "調査日", "調査者", "天候", ...GKr.map((x) => x.item.rows ? `管理：${x.label}` : x.label), "備考"], 1); gs.heights[0] = 48; gs.freeze = [1, 2];
     let gr = 1;
     sites.forEach((s, k) => { const r = gk[k]; if (!r) return; const a = r.ans;
       const notes = GKr.filter((x) => filled(a["note|" + x.row])).map((x) => `${x.label}：${a["note|" + x.row]}`).concat(filled(a.otherName) ? [`その他の内容：${a.otherName}`] : []).join("／");
-      for (const [z] of GK.zones) gs.row(gr++, [s, zoneName(a, z), ST_LABEL[statusOf(r)], r.date, r.by, a.weather || "", ...GKr.map((x) => a[`${z}|na`] === "対象外" ? "" : (x.type === "number" ? num(a[`${z}|${x.id}`]) : ansText(a[`${z}|${x.id}`]))), notes], 3); });
+      for (const [z] of GK.zones) gs.row(gr++, [s, zoneName(a, z), ST_LABEL[statusOf(r)], r.date, r.by, a.weather || "", ...GKr.map((x) => x.get(a, z)), notes], 3); });
     // 植生（植生野帳の読み込み形式）
     const pc = bk.add("植生_調査区"), PH = ["調査区番号", "調査日", "調査者", "都道府県", "地点名", "緯度", "経度", "標高(m)", "傾斜(°)", "方位", "微地形", "土壌", "土壌の湿り", "人為的影響", "攪乱後の年数", "群落の種類", "区画", "面積(m2)",
       ...VEG.layers.flatMap(([, n]) => [`${n}_高さ(m)`, `${n}_植被率(%)`]), "植生帯の指定", "気候区分の指定", "群（手動）", "解析に含める", "状態", "メモ", "内部ID", "調査地", "群落名（現地）", "優占種", "写真ファイル"];
@@ -1619,9 +1674,9 @@ window.Store = (function () {
     spRows.forEach((x, k) => { st.row(k + 1, [LAYER_JP[x.l], x.n, ...plots.map((r) => x.by[r.id] || ""), Object.keys(x.by).length], 2); plots.forEach((r, j) => st.set(k + 1, j + 2, x.by[r.id] || "", 7)); });
     st.row(spRows.length + 1, ["", "出現種数", ...plots.map((r) => new Set((r.sp || []).map((s) => s.n)).size), ""], 6);
     for (const r of plots) vegSheet(bk, "票_" + r.no, r);
-    const td = bk.add("樹木データ").width([14, 10, 8, 9, 14, 12, 12, 8, 8, 6, 24, 10]);
+    const td = bk.add("樹木データ").width([14, 10, 8, 9, 14, 10, 8, 12, 12, 8, 8, 6, 24, 10]);
     td.row(0, [...TREE_COLS.map((c) => c[1]), "区分"], 1); td.freeze = [1, 0];
-    trees.filter((t) => !t.orphan).forEach((t, k) => td.row(k + 1, [t.site, forestShort(t.forest), t.growth, t.tno, t.sp, +t.lat.toFixed(7), +t.lon.toFixed(7), "", "", "", t.memo, t.src === "local" ? "現地で追加" : t.moved || t.edited ? "現地で修正" : ""], 2));
+    trees.filter((t) => !t.orphan).forEach((t, k) => td.row(k + 1, [t.site, forestShort(t.forest), t.growth, t.tno, t.sp, t.kiban, t.konkei, +t.lat.toFixed(7), +t.lon.toFixed(7), "", "", "", t.memo, t.src === "local" ? "現地で追加" : t.moved || t.edited ? "現地で修正" : ""], 2));
     return bk.blob();
   }
 
@@ -1753,7 +1808,7 @@ window.Store = (function () {
       const d = await bk.doc(sum); sum.state = "";
       trees.forEach((t, k) => {
         const rn = 4 + k, r = R.get(recId.chijo(t.key)), a = r ? r.ans : {}, m = treeMetrics(a);
-        const vals = [t.site, `${forestShort(t.forest)}_${t.growth}`.replace(/^_|_$/g, ""), numOrText(t.tno), t.sp, m.h ?? "", m.g ? m.g.val : "", m.d ? m.d.val : "", m.d ? Math.round(Math.PI * m.d.val / 10 * 10) / 10 : "", m.w != null ? Math.round(m.w) / 100 : "", a.katchaku || "", m.vit ? m.vit.avg : "", m.vit ? m.vit.cls : ""];
+        const vals = [t.site, `${forestShort(t.forest)}_${t.growth}`.replace(/^_|_$/g, ""), numOrText(t.tno), t.sp, m.h ?? "", m.g ? m.g.val : "", m.d ? m.d.val : "", m.d ? Math.round(Math.PI * m.d.val / 10 * 10) / 10 : "", m.w != null ? Math.round(m.w) / 100 : "", "", m.vit ? m.vit.avg : "", m.vit ? m.vit.cls : ""];
         vals.forEach((v, j) => bk.set(d, String.fromCharCode(65 + j) + rn, v, String.fromCharCode(65 + j) + "4"));
       });
     }
@@ -1762,13 +1817,14 @@ window.Store = (function () {
       const sh = await bk.copy(src, `${site ? "" : t.site + "_"}No.${t.tno}`, "$A$1:$N$29"), d = await bk.doc(sh);
       bk.set(d, C.site, t.site); bk.set(d, C.forest, forestShort(t.forest)); bk.set(d, C.growth, t.growth); bk.set(d, C.no, numOrText(t.tno));
       bk.set(d, C.date, r && r.date ? r.date.replace(/-/g, "/") : ""); bk.set(d, C.by, r ? r.by || "" : "");
+      bk.set(d, C.spHead[0], C.spHead[1]); bk.set(d, C.sp, t.sp || "");
+      bk.set(d, C.kiban, t.kiban || ""); bk.set(d, C.konkei, t.konkei || "");
       if (r) {
         const ctx = {}, it = SV.chijo.items, m = treeMetrics(a);
         C.g.forEach((ref, k) => bk.set(d, ref, nv(a["g" + (k + 1)]) ?? ""));
         C.d.forEach((ref, k) => bk.set(d, ref, nv(a["d" + (k + 1)]) ?? ""));
         bk.set(d, C.h, m.h ?? ""); bk.set(d, C.ew, nv(a.ew) ?? ""); bk.set(d, C.ns, nv(a.ns) ?? "");
         C.s.forEach((ref, k) => bk.set(d, ref, nv(a["s" + (k + 1)]) ?? ""));
-        bk.set(d, C.kiban, a.kiban || ""); bk.set(d, C.konkei, a.konkei || "");
         C.v.forEach((ref, k) => { const item = it.find((x) => x.id === "v" + (k + 1)); bk.set(d, ref, item && visible(item, a, ctx) ? nv(a["v" + (k + 1)]) ?? "" : ""); });
         bk.cached(d, C.calc.gSum, m.g && m.g.multi ? m.g.val : "－"); bk.cached(d, C.calc.dSum, m.d && m.d.multi ? m.d.val : "－");
         bk.cached(d, C.calc.wAvg, m.w); bk.cached(d, C.calc.sAvg, m.s); bk.cached(d, C.calc.vit, m.vit ? m.vit.avg : null); bk.cached(d, C.calc.judge, m.vit ? m.vit.cls : null);
@@ -1792,13 +1848,13 @@ window.Store = (function () {
       const sh = await bk.copy(src, s, "$A$1:$H$33"), d = await bk.doc(sh);
       bk.set(d, C.title, title0.replace(/―.*$/, `―　${s}`) || s);
       bk.set(d, C.date, r ? xlDate(r.date) : ""); bk.set(d, C.by, r ? r.by || "" : ""); bk.set(d, C.weather, a.weather || "");
-      if (!r) { for (const [k] of GK.zones.entries()) for (const row of GK.rows) if (row.row) bk.set(d, C.zoneCols[k] + row.row, ""); continue; }
+      if (!r) { for (const [k] of GK.zones.entries()) for (const row of gRowDefs()) bk.set(d, C.zoneCols[k] + row.row, ""); continue; }
       GK.zones.forEach(([z], k) => {
-        const col = C.zoneCols[k], na = a[`${z}|na`] === "対象外";
-        if (na || a[`${z}|name`]) bk.set(d, col + C.zoneRow, zoneName(a, z));
-        for (const row of GK.rows) if (row.row) { const v = a[`${z}|${row.id}`]; bk.set(d, col + row.row, na ? "" : row.type === "number" ? nv(v) ?? "" : ansText(v)); }
+        const col = C.zoneCols[k];
+        if (a[`${z}|name`]) bk.set(d, col + C.zoneRow, zoneName(a, z));
+        for (const row of gRowDefs()) bk.set(d, col + row.row, row.get(a, z));
       });
-      for (const row of GK.rows) if (row.row && filled(a["note|" + row.row])) bk.set(d, C.noteCol + row.row, a["note|" + row.row]);
+      for (const row of gRowDefs()) if (filled(a["note|" + row.row])) bk.set(d, C.noteCol + row.row, a["note|" + row.row]);
       if (filled(a.otherName)) bk.set(d, C.otherCell, `その他（${a.otherName}）`);
     }
     return bk.blob();
@@ -1859,7 +1915,7 @@ window.Store = (function () {
       z.file(`植生調査・一覧表_${stamp()}.xlsx`, await buildList(site));
       for (const p of await photoEntries(site)) z.file(p.path, p.data.split(",")[1], { base64: true });
       const bj = backupJSON(site);
-      bj.trees = { ledger: await Store.kv.get("ledger"), local: await Store.kv.get("localtrees", []), fixes: await Store.kv.get("fixes", {}), sites: ls.get("sites", []) };
+      bj.trees = { ledger: await Store.kv.get("ledger"), local: await Store.kv.get("localtrees", []), fixes: await Store.kv.get("fixes", {}), deleted: await Store.kv.get("deleted", {}), sites: ls.get("sites", []) };
       z.file("バックアップ/backup.json", JSON.stringify(bj));
       z.file("はじめにお読みください.txt", `${CFG.appTitle} 出力データ\r\n\r\n・地上部調査票_結果：様式「地上部調査票」に1本1シートで記入（集計表つき・写真は先頭6枚を貼付）\r\n・概況調査票_結果：様式「概況調査票」に調査地ごとに記入\r\n・植生調査・一覧表：植生調査（調査区・出現種・素表・調査票）と地上部・概況の一覧\r\n・写真フォルダ：すべての調査写真（ファイル名は一覧表の「写真ファイル」列と対応）\r\n・バックアップ/backup.json：アプリに読み込み直すためのデータ（アプリの「出力・設定 → バックアップを読み込む」でこのZIPを選びます）\r\n`);
       ls.set("lastBackup", new Date().toISOString());
@@ -1872,12 +1928,12 @@ window.Store = (function () {
   // 様式（空欄の記入用Excel）
   // =====================================================================
   async function tplTrees() {
-    const bk = XW.book(), sh = bk.add("樹木一覧").width([16, 11, 9, 10, 14, 12, 12, 11, 11, 7, 24]);
+    const bk = XW.book(), sh = bk.add("樹木一覧").width([16, 11, 9, 10, 14, 12, 10, 12, 12, 11, 11, 7, 24]);
     sh.row(0, TREE_COLS.map((c) => c[1]), 1); sh.freeze = [1, 0]; sh.heights[0] = 30;
-    sh.row(1, [(CFG.sites || [])[0] || "〇〇の森", "広葉", "良好", "例1", "コナラ", 35.67123, 139.69512, "", "", "", "「例」で始まる樹木番号の行は読み込みません"], 5);
-    sh.row(2, [(CFG.sites || [])[0] || "〇〇の森", "針葉", "不良", "例2", "クロマツ", "", "", -36500.0, -12620.0, 9, "位置を平面直角座標で入れる例"], 5);
+    sh.row(1, [(CFG.sites || [])[0] || "〇〇の森", "広葉", "良好", "例1", "コナラ", "有", "無", 37.00512, 140.98012, "", "", "", "「例」で始まる樹木番号の行は読み込みません"], 5);
+    sh.row(2, [(CFG.sites || [])[0] || "〇〇の森", "針葉", "不良", "例2", "クロマツ", "無", "無", "", "", -36500.0, -12620.0, 9, "位置を平面直角座標で入れる例"], 5);
     sh.box(3, 0, 501, TREE_COLS.length - 1, 2);
-    sh.list(1, 1, 2000, 1, ["広葉", "針葉"]); sh.list(1, 2, 2000, 2, CFG.growthTypes);
+    sh.list(1, 1, 2000, 1, ["広葉", "針葉"]); sh.list(1, 2, 2000, 2, CFG.growthTypes); sh.list(1, 5, 2000, 6, ["有", "無"]);
     const hp = bk.add("記入方法").width([16, 90]); hp.landscape = false;
     hp.set(0, 0, "樹木データ 記入方法", 4);
     hp.row(2, ["列名", "説明"], 1); TREE_COLS.forEach((c, k) => hp.row(k + 3, [c[1], c[2]], 3));
@@ -1937,7 +1993,7 @@ window.Store = (function () {
       if (tno && exist.has(key)) e.push("同じ調査地・樹木番号の木が登録済み"); if (tno && seen.has(key)) e.push("ファイル内で調査地・樹木番号が重複");
       if (e.length) { errs.push([k + 1, tno || sp, e.join("・")]); continue; }
       seen.add(key);
-      ok.push({ site, tno, sp, forest: String(get("forest") ?? "").trim(), growth: String(get("growth") ?? "").trim(), lat: +lat.toFixed(7), lon: +lon.toFixed(7), memo: String(get("memo") ?? "").trim() });
+      ok.push({ site, tno, sp, forest: String(get("forest") ?? "").trim(), growth: String(get("growth") ?? "").trim(), kiban: String(get("kiban") ?? "").trim(), konkei: String(get("konkei") ?? "").trim(), lat: +lat.toFixed(7), lon: +lon.toFixed(7), memo: String(get("memo") ?? "").trim() });
     }
     const prev = await Store.kv.get("ledger"), sitesN = new Set(ok.map((t) => t.site)).size;
     const go = await dialog({ title: mode === "add" ? "樹木を追加" : "樹木データを読み込む",
@@ -1947,7 +2003,7 @@ window.Store = (function () {
       ok: ok.length ? "読み込む" : "閉じる", cancel: ok.length ? "やめる" : null });
     if (!go || !ok.length) return;
     if (mode === "add") { const local = await Store.kv.get("localtrees", []); await Store.kv.put("localtrees", local.concat(ok.map((t) => ({ ...t, added: new Date().toISOString(), by: S.name, srcFile: file.name })))); }
-    else await Store.kv.put("ledger", { trees: ok, file: file.name, loadedAt: new Date().toISOString(), by: S.name });
+    else { await Store.kv.put("ledger", { trees: ok, file: file.name, loadedAt: new Date().toISOString(), by: S.name }); await Store.kv.put("deleted", {}); }
     await loadTrees(); fillSiteLists(); applyFilter(); renderMenuIfOpen();
     fitTo(ok.map((t) => [t.lon, t.lat])); toast(`${ok.length}本を読み込みました`, 3500);
   }
@@ -2002,6 +2058,7 @@ window.Store = (function () {
       }
       if (hasLedger && !(await Store.kv.get("ledger"))) await Store.kv.put("ledger", tr.ledger);
       if ((tr.local || []).length) { const loc = await Store.kv.get("localtrees", []), ks = new Set(loc.map((t) => treeKey(t.site, t.tno))); for (const t of tr.local) if (!ks.has(treeKey(t.site, t.tno))) loc.push(t); await Store.kv.put("localtrees", loc); }
+      if (tr.deleted) { const dl = await Store.kv.get("deleted", {}); Object.assign(dl, tr.deleted); await Store.kv.put("deleted", dl); }
       if (tr.fixes) { const fx = await Store.kv.get("fixes", {}); for (const [k, v] of Object.entries(tr.fixes)) if (!fx[k] || (v.at || "") > (fx[k].at || "")) fx[k] = v; await Store.kv.put("fixes", fx); }
       if (tr.sites) { const a = new Set(ls.get("sites", [])); tr.sites.forEach((s) => a.add(s)); ls.set("sites", [...a]); }
       await loadTrees(); fillSiteLists(); applyFilter();
@@ -2097,6 +2154,7 @@ window.Store = (function () {
     const nRec = R.size, lb = ls.get("lastBackup", null);
     const unsaved = [...R.values()].filter((r) => !lb || (r.updated || "") > lb).length;
     openPane("menu", "出力・設定", `
+      <ul class="menu" style="margin-top:2px"><li><button data-act="goHome">${ic("pin")}<span><b>ホーム画面に戻る</b><small>調査地・調査員を選び直します（入力した内容は保存済みです）。いま：${esc(S.site || "すべての調査地")}／${esc(S.name)}</small></span></button></li></ul>
       <div class="sec">調査結果の出力</div>
       ${unsaved ? `<p class="notebox"><b>まだZIPで出力していない記録が ${unsaved}件</b> あります。端末の故障・データ消去に備えて、調査のたびにZIPで出力して保管してください。</p>` : ""}
       <ul class="menu">
@@ -2113,17 +2171,16 @@ window.Store = (function () {
         <li><button data-act="tplVeg">${ic("down")}<span>植生調査票<small>階層・出現種（被度・群度）・選択リストつき</small></span></button></li>
       </ul>
       <div class="sec">樹木データ</div>
-      <dl class="infobox"><dt>読み込んだデータ</dt><dd>${led ? `${esc(led.file || "")}　${(led.trees || []).length}本（${dateJ(today(new Date(led.loadedAt)))}）` : "なし"}</dd><dt>現地で追加</dt><dd>${local.length}本</dd><dt>現地で修正</dt><dd>${Object.keys(fixes).length}本</dd><dt>調査地</dt><dd>${siteList().length}か所</dd></dl>
+      <dl class="infobox"><dt>読み込んだデータ</dt><dd>${led ? `${esc(led.file || "")}　${(led.trees || []).length}本（${dateJ(today(new Date(led.loadedAt)))}）` : "なし"}</dd><dt>現地で追加</dt><dd>${local.length}本</dd><dt>現地で修正</dt><dd>${Object.keys(fixes).length}本</dd><dt>削除した木</dt><dd>${Object.keys(await Store.kv.get("deleted", {})).length}本</dd><dt>調査地</dt><dd>${siteList().length}か所</dd></dl>
       <ul class="menu">
         <li><button data-act="importTrees">${ic("upload")}<span>樹木データを読み込む（入れ替え）<small>Excel（.xlsx）。調査記録は消えません</small></span></button></li>
+        <li><button data-act="delStart">${ic("trash")}<span>樹木を選んで削除<small>間違えて追加した木などをまとめて削除します</small></span></button></li>
         <li><button data-act="importTreesAdd">${ic("plus")}<span>樹木を追加で読み込む<small>今のデータに追加します</small></span></button></li>
       </ul>
       <div class="sec">バックアップ・端末間の統合</div>
       <ul class="menu"><li><button data-act="importBackup">${ic("upload")}<span>バックアップを読み込む<small>このアプリで出力したZIP。他の端末の記録を統合できます（新しい方を残します）</small></span></button></li></ul>
       <div class="sec">オフライン用の地図</div>
       <div id="offHost">${offlineHTML()}</div>
-      <div class="sec">表示</div>
-      <label class="field" style="display:flex;align-items:center;justify-content:space-between;gap:10px"><span>評価（1〜4）を番号だけの小さいボタンにする</span><input type="checkbox" id="optCompact"${S.compactScale ? " checked" : ""} style="width:22px;height:22px"></label>
       <div class="sec">その他</div>
       <ul class="menu">
         <li><button data-act="changeName">${ic("user")}<span>調査員の名前を変更<small>${esc(S.name)}</small></span></button></li>
@@ -2131,7 +2188,6 @@ window.Store = (function () {
       </ul>
       <p class="small muted">版：${esc(CFG.version)}　端末ID：${esc(S.device)}<br><span id="useInfo"></span></p>`,
       async () => {
-        $("#optCompact").onchange = (e) => { S.compactScale = e.target.checked; ls.set("compact", S.compactScale); };
         if (navigator.storage?.estimate) { try { const e = await navigator.storage.estimate(); $("#useInfo").textContent = `この端末での使用量：約${Math.round((e.usage || 0) / 1048576)}MB`; } catch { } }
       });
   }
@@ -2147,11 +2203,12 @@ window.Store = (function () {
     offZ: (d) => { OFF.zmax = +d.v; $("#offHost").innerHTML = offlineHTML(); },
     offDl: downloadArea, offDel: (d) => deleteArea(d.id),
     offShow: (d) => { const a = offAreas().find((x) => x.id === d.id); if (!a) return; if (a.bm !== baseKind) switchBasemap(a.bm); setSheetSize("mini"); map.fitBounds([[a.b[0], a.b[1]], [a.b[2], a.b[3]]], { padding: 20 }); },
+    goHome: () => showStart(),
     changeName: async () => { const n = await dialog({ title: "調査員の名前", input: { value: S.name }, ok: "変更" }); if (n) { S.name = n; ls.set("name", n); updateHead(); renderMenuIfOpen(); } },
     wipe: async () => {
       const w = await dialog({ title: "この端末のデータをすべて削除", body: `<p>調査記録・写真・樹木データをこの端末から削除します。<b>元に戻せません。</b>先にZIPで出力してください。</p><p>削除する場合は「削除」と入力してください。</p>`, input: { placeholder: "削除" }, ok: "削除する", danger: true });
       if (w !== "削除") { if (w != null) toast("入力が違うため削除しませんでした"); return; }
-      await Store.recs.clear(); await Store.photos.clear(); for (const k of ["ledger", "localtrees", "fixes"]) await Store.kv.put(k, k === "fixes" ? {} : k === "localtrees" ? [] : null);
+      await Store.recs.clear(); await Store.photos.clear(); for (const k of ["ledger", "localtrees", "fixes", "deleted"]) await Store.kv.put(k, k === "fixes" || k === "deleted" ? {} : k === "localtrees" ? [] : null);
       ls.set("sites", []); ls.set("lastBackup", null); await loadRecs(); await loadTrees(); fillSiteLists(); applyFilter(); renderMenu(); toast("削除しました");
     },
   };
@@ -2220,6 +2277,14 @@ window.Store = (function () {
     addEventListener("beforeunload", () => { if (S.dirty && S.cur) saveCur("quiet"); });
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && S.dirty && S.cur) saveCur("quiet"); });
   }
+  // ホーム画面（起動画面）の表示・非表示。調査地が変わるときに選び直す
+  function hideStart() { const st = $("#start"); st.style.transition = "opacity .3s"; st.style.opacity = 0; setTimeout(() => { st.hidden = true; }, 320); }
+  async function showStart() {
+    if (S.cur && S.dirty) await saveCur("quiet");
+    closeSheet(); stopPlace(); $("#layerPop").hidden = true;
+    fillSiteLists(); $("#stName").value = S.name || ls.get("name", ""); $("#stSite").value = S.site || ""; $("#stErr").hidden = true;
+    const st = $("#start"); st.hidden = false; st.style.transition = "none"; st.style.opacity = 1; st.scrollTop = 0;
+  }
   async function ensureDevice() {
     let d = ls.get("device", null) || (await Store.kv.get("device"));
     if (!d) d = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 32]).join("");
@@ -2245,7 +2310,7 @@ window.Store = (function () {
         const n = $("#stName").value.trim(); if (!n) { $("#stErr").textContent = "調査員の名前を入力してください"; $("#stErr").hidden = false; $("#stName").focus(); return; }
         S.name = n; ls.set("name", n); S.site = $("#stSite").value === "__new" ? "" : $("#stSite").value; ls.set("site", S.site);
         applyFilter(); fitSite();
-        const st = $("#start"); st.style.transition = "opacity .3s"; st.style.opacity = 0; setTimeout(() => st.remove(), 320);
+        hideStart();
         if (!Store.persistent) toast("このブラウザでは端末に保存できません（閉じると消えます）", 5000);
         else if (!T.length) setTimeout(() => showChijoList(), 400);
       };
