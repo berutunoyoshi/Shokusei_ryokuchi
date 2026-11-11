@@ -124,13 +124,12 @@ svg.ic { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-wid
 .scaledesc { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .scaledesc li { display: flex; gap: 8px; }
 .scaledesc b { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-size: 12px; }
-.ztabs { position: sticky; top: -12px; z-index: 2; display: grid; grid-template-columns: 1fr 1fr 58px; gap: 5px; margin: 0 -14px 12px; padding: 7px 14px 8px; background: var(--surface-2); border-top: 1px solid var(--line); border-bottom: 2px solid var(--kc); box-shadow: 0 6px 10px -6px rgba(0,0,0,.25); }
-.ztabs button { border: 1.5px solid var(--line); background: var(--surface); border-radius: var(--r-sm); padding: 0 8px; height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 4px; font-weight: 700; font-size: 13px; white-space: nowrap; min-width: 0; }
-.ztabs button span { overflow: hidden; text-overflow: ellipsis; }
-.ztabs button small { flex: none; font-weight: 700; font-size: 11px; color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: 0 6px; line-height: 17px; }
-.ztabs button.on { border-color: var(--kc); background: var(--kc); color: #fff; }
-.ztabs button.on small { color: var(--kc); background: #fff; }
-.ztabs button[data-z="note"] { grid-column: 3; grid-row: 1 / span 2; height: auto; justify-content: center; }
+/* 調査区：インデックスタブ */
+.ztabs { position: sticky; top: -12px; z-index: 2; display: flex; gap: 3px; align-items: flex-end; margin: 4px -14px 0; padding: 8px 10px 0; background: var(--surface); border-bottom: 3px solid var(--kc); box-shadow: 0 8px 10px -8px rgba(0,0,0,.25); overflow-x: auto; scrollbar-width: none; }
+.ztabs button { flex: 1 1 0; min-width: 62px; border: 1px solid var(--line); border-bottom: 0; background: var(--surface-2); color: var(--muted); border-radius: 10px 10px 0 0; padding: 8px 6px 7px; font-weight: 700; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ztabs button.on { background: var(--kc); border-color: var(--kc); color: #fff; padding-top: 11px; }
+.ztabs button[data-z="note"] { flex: 0 0 auto; min-width: 54px; }
+.ztitle { font-weight: 700; font-size: 15px; color: var(--kc); margin: 10px 0 8px; padding-left: 8px; border-left: 4px solid var(--kc); }
 .sheet[data-k="gaikyo"] .sheet-body { scroll-padding-top: 96px; }
 .help { font-size: 11.5px; color: var(--muted); margin: 4px 0 0; }
 .inp { width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-sm); padding: 10px 11px; font-size: 16px; outline: none; }
@@ -418,7 +417,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.9.0（2026-11-11）",   // 更新したら sw.js の VERSION も変える
+  version: "1.9.2（2026-11-11）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -488,24 +487,26 @@ window.APP_CONFIG = {
       spacing: [
         { id: "sp", section: "11 樹木間隔（調査区ごとに10か所）", label: "樹木間隔 No.1〜10（m）", type: "nums", fields: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => ({ id: "sp" + k, label: "No." + k, max: 100 })) },
         { id: "spCalc", type: "calc", calc: "spacing10" }],
-      zones: [["cg", "針葉樹_良好区"], ["cb", "針葉樹_不良区"], ["bg", "広葉樹_良好区"], ["bb", "広葉樹_不良区"]],
+      zones: [["cg", "針葉樹_良好区", "針葉 良好"], ["cb", "針葉樹_不良区", "針葉 不良"], ["bg", "広葉樹_良好区", "広葉 良好"], ["bb", "広葉樹_不良区", "広葉 不良"]],
+      // 調査地ごとの調査区（固定）。ここにない調査地は4つすべてで、調査画面で選び直せます
+      siteZones: { "埒浜防災緑地": ["cg", "cb", "bg", "bb"], "四倉防災緑地": ["cg", "cb", "bg", "bb"], "豊間防災緑地": ["cg", "cb"] },
       rows: [
         { id: "age", row: 6, section: "1 樹齢", label: "推定樹齢（年）", type: "number", unit: "年", max: 300 },
         { id: "strType", row: 7, section: "2 構造物の設置状況", label: "種類・規格", type: "line", placeholder: "例：柵1.2m" },
         { id: "strState", row: 8, label: "状態", type: "buttons", options: ["健全", "一部破損", "破損・倒壊"] },
         { id: "mgmt", rows: [9, 10, 11, 12, 13, 14, 15, 16], section: "3 管理状況", label: "実施した管理（タッチして選択）", type: "multi", options: ["間伐", "下草刈り", "枯損木処理", "枝打ち", "病虫害防除", "潅水", "補植", "その他"], help: "選んだ項目は ●、選ばなかった項目は × で調査票に出力します。「その他」の内容は「備考」タブに入力します" },
-        { id: "lowH", row: 17, section: "4 下枝の状況", label: "下枝高（m）", type: "number", unit: "m", max: 30 },
-        { id: "deadH", row: 18, label: "枯れ下がり高さ（m）", type: "number", unit: "m", max: 30 },
+        { id: "lowH", row: 17, section: "4 下枝の状況", label: "下枝高", type: "number", unit: "m", max: 30, half: true },
+        { id: "deadH", row: 18, label: "枯れ下がり高さ", type: "number", unit: "m", max: 30, half: true },
         { id: "deadState", row: 19, label: "枯れの状態", type: "buttons", options: ["あり", "あり（軽微）", "なし"] },
         { id: "landform", row: 20, section: "5 地形", label: "地形", type: "buttons", options: ["尾根", "斜面上部", "斜面中部", "斜面下部", "谷・沢沿い", "平地・台地", "低地・氾濫原", "湿地", "海岸砂丘", "岩場・崖", "のり肩", "のり尻"] },
-        { id: "slope", row: 21, label: "斜面傾斜角（°）", type: "number", unit: "°", max: 90 },
-        { id: "aspect", row: 22, label: "斜面方位", type: "select", options: ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "―"] },
+        { id: "slope", row: 21, label: "斜面傾斜角", type: "number", unit: "°", max: 90, half: true },
+        { id: "aspect", row: 22, label: "斜面方位", half: true, type: "select", options: ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "―"] },
         { id: "seedling", row: 23, section: "6 下層植生", label: "実生の状況（樹種）", type: "line", list: "spList" },
         { id: "under", row: 24, label: "下層植生の状況（種・状況）", type: "text" },
         { id: "litter", row: 25, label: "リター堆積厚（cm）", type: "number", unit: "cm", max: 100 },
         { id: "invasive", row: 26, section: "7 植栽以外の侵入種", label: "種名", type: "line", list: "spList" },
-        { id: "lightSite", row: 27, section: "8 光環境", label: "調査地 測定値", type: "number", max: 5000, help: "PPFD（μmol/m²/s）。全天写真の場合は開空度（%）を入力し、備考にその旨を記載" },
-        { id: "lightRef", row: 28, label: "対照地 測定値", type: "number", max: 5000 },
+        { id: "lightSite", row: 27, section: "8 光環境", label: "調査地 測定値", type: "number", max: 5000, half: true, help: "PPFD（μmol/m²/s）。全天写真の場合は開空度（%）を入力し、備考にその旨を記載" },
+        { id: "lightRef", row: 28, label: "対照地 測定値", type: "number", max: 5000, half: true },
         { id: "lightCalc", type: "calc", calc: "light" },
         { id: "lightTime", row: 29, label: "測定時間", type: "line", placeholder: "例：10:30" },
         { id: "erosion", row: 30, section: "9 のり面浸食", label: "有無", type: "buttons", options: ["有", "無"] },
@@ -1018,7 +1019,6 @@ window.Store = (function () {
     const body = $("#sheetBody");
     $$(".sec", body).forEach((sec) => { let n = sec.nextElementSibling, any = false; while (n && !n.classList.contains("sec")) { if (n.dataset.item && !n.hidden) any = true; if (!n.dataset.item) any = true; n = n.nextElementSibling; } sec.hidden = !any; });
     $$("[data-calc]", body).forEach((el) => { const f = CALC[el.dataset.calc]; if (f) el.innerHTML = f(c.rec.ans, c, el.dataset.zone); });
-    if (c.kind === "gaikyo") $$("#gzTabs [data-z] small").forEach((el) => { const z = el.parentElement.dataset.z; el.textContent = GK.rows.filter((r) => filled(c.rec.ans[`${z}|${r.id}`])).length; });
   }
   function missingItems(c) {
     const out = [];
@@ -1209,7 +1209,7 @@ window.Store = (function () {
     const sites = siteList().sort((a, b) => (b === S.site) - (a === S.site));
     openPane("gaikyo", "概況調査", `<p class="small muted" style="margin-top:0">調査地ごとに1件記録します。</p>
       ${sites.length ? `<ul class="list">${sites.map((s) => { const r = R.get(recId.gaikyo(s)), sm = siteSummary(s);
-        return `<li><button data-act="openGaikyo" data-site="${esc(s)}"><span class="dotc" style="background:${r ? (r.status === "done" ? "#8a5a1f" : "#fff") : "#8a968e"}"></span><span class="main"><span class="t1">${esc(s)}${s === S.site ? '<span class="badge" style="margin-left:6px">選択中</span>' : ""}</span><span class="t2">樹木 ${sm.n}本${sm.n ? `（広葉樹 ${sm.br}・針葉樹 ${sm.co}／良好 ${sm.good}・不良 ${sm.bad}）` : ""}</span></span>${statusBadge(statusOf(r))}</button></li>`; }).join("")}</ul>` : `<p class="empty">調査地がありません。</p>`}
+        return `<li><button data-act="openGaikyo" data-site="${esc(s)}"><span class="dotc" style="background:${r ? (r.status === "done" ? "#8a5a1f" : "#fff") : "#8a968e"}"></span><span class="main"><span class="t1">${esc(s)}${s === S.site ? '<span class="badge" style="margin-left:6px">選択中</span>' : ""}</span><span class="t2">${esc(activeZones(s, r ? r.ans : {}).map((z) => zoneName(r ? r.ans : {}, z)).join("・"))}${r && r.date ? `・${dateJ(r.date)}` : ""}</span></span>${statusBadge(statusOf(r))}</button></li>`; }).join("")}</ul>` : `<p class="empty">調査地がありません。</p>`}
       <button class="btn line block" data-act="addSite" style="margin-top:12px">${ic("plus")}調査地を追加</button>`);
   }
   // 調査区（列）ごとの項目。id は「調査区|項目」
@@ -1227,6 +1227,15 @@ window.Store = (function () {
   const noteItems = () => { let sec = ""; return [{ id: "otherName", section: "「その他」の内容", label: "3 管理状況「その他（ ）」に入れる内容", type: "line" },
     ...gRowDefs().map((d, k) => { if (d.section) sec = d.section; return { id: "note|" + d.row, section: k === 0 ? "備考（行ごと）" : undefined, label: `${sec}：${d.label}`, type: "line" }; })]; };
   const zoneName = (ans, z) => ans[`${z}|name`] || GK.zones.find((x) => x[0] === z)[1];
+  const zoneShort = (ans, z) => ans[`${z}|name`] || GK.zones.find((x) => x[0] === z)[2] || zoneName(ans, z);
+  // その調査地で調査する調査区：設定（siteZones）で決まっている調査地は固定。それ以外は画面で選んだもの（初期は4つすべて）
+  const zonesFixed = (site) => !!(GK.siteZones || {})[site];
+  function activeZones(site, ans = {}) {
+    const all = GK.zones.map((x) => x[0]);
+    if (zonesFixed(site)) return all.filter((z) => GK.siteZones[site].includes(z));
+    if (Array.isArray(ans.zones) && ans.zones.length) return all.filter((z) => ans.zones.includes(z));
+    return all;
+  }
   function openGaikyo(site) {
     const id = recId.gaikyo(site), old = R.get(id), sm = siteSummary(site);
     const rec = old ? JSON.parse(JSON.stringify(old)) : { id, kind: "gaikyo", site, status: "", ans: {}, photos: [], date: today(), by: S.name, lat: null, lon: null };
@@ -1234,11 +1243,12 @@ window.Store = (function () {
     S.cur = { kind: "gaikyo", rec, items, ctx: {} };
     S.gZone = S.gZone || GK.zones[0][0];
     openPane("gaikyoForm", `概況調査：${site}`, `
-      <dl class="infobox"><dt>調査地</dt><dd>${esc(site)}</dd><dt>樹木データ</dt><dd>${sm.n ? `${sm.n}本（広葉樹 ${sm.br}・針葉樹 ${sm.co}／良好 ${sm.good}・不良 ${sm.bad}）` : "なし"}</dd>
+      <dl class="infobox"><dt>調査地</dt><dd>${esc(site)}</dd>
         <dt>位置</dt><dd id="gPos">${rec.lat != null ? `${(+rec.lat).toFixed(6)}, ${(+rec.lon).toFixed(6)}` : "未記録"}</dd><dt>状態</dt><dd><span id="curBadge">${statusBadge(statusOf(old))}</span></dd></dl>
       <div class="btnrow" style="margin-bottom:6px"><button class="btn line mini" data-act="posHere">${ic("locate")}現在地を記録</button>${sm.n ? `<button class="btn line mini" data-act="fitSite" data-site="${esc(site)}">${ic("mapview")}地図で見る</button>` : ""}</div>
       ${metaHTML(rec)}${itemsHTML(GK.head, rec.ans, {})}
       <div class="sec">調査区ごとの記入</div>
+      ${zonesFixed(site) ? "" : `<div class="field"><span class="lbl">この調査地の調査区（タッチで切り替え）</span><div class="seg" id="gzSel"></div></div>`}
       <div class="ztabs" id="gzTabs" role="tablist"></div>
       <div id="gzBody"></div>
       <div class="sec">写真</div><div id="phHost"></div>
@@ -1247,16 +1257,25 @@ window.Store = (function () {
   }
   function renderGZone() {
     const c = S.cur; if (!c || c.kind !== "gaikyo") return;
-    const a = c.rec.ans, z = S.gZone;
-    const filledN = (zz) => GK.rows.filter((r) => filled(a[`${zz}|${r.id}`])).length;
-    $("#gzTabs").innerHTML = GK.zones.map(([k]) => `<button data-act="gZone" data-z="${k}"${z === k ? ' class="on"' : ""}><span>${esc(zoneName(a, k))}</span><small title="入力済みの項目数">${filledN(k)}</small></button>`).join("") + `<button data-act="gZone" data-z="note"${z === "note" ? ' class="on"' : ""}>備考</button>`;
+    const a = c.rec.ans, act = activeZones(c.rec.site, a);
+    if (S.gZone !== "note" && !act.includes(S.gZone)) S.gZone = act[0];
+    const z = S.gZone;
+    if ($("#gzSel")) $("#gzSel").innerHTML = GK.zones.map(([k]) => `<button type="button" data-act="gZoneSel" data-z="${k}"${act.includes(k) ? ' class="on"' : ""}>${esc(zoneName(a, k))}</button>`).join("");
+    $("#gzTabs").innerHTML = act.map((k) => `<button role="tab" data-act="gZone" data-z="${k}"${z === k ? ' class="on" aria-selected="true"' : ""}>${esc(zoneShort(a, k))}</button>`).join("") + `<button role="tab" data-act="gZone" data-z="note"${z === "note" ? ' class="on" aria-selected="true"' : ""}>備考</button>`;
     const its = z === "note" ? noteItems() : zoneItems(z);
-    $("#gzBody").innerHTML = (z !== "note" ? `<div class="btnrow" style="margin-bottom:8px"><button class="btn line mini" data-act="gCopy">${ic("file")}ほかの調査区から写す</button></div>` : "") + itemsHTML(its, a, {});
+    $("#gzBody").innerHTML = (z !== "note" ? `<div class="ztitle">${esc(zoneName(a, z))}</div><div class="btnrow" style="margin-bottom:8px"><button class="btn line mini" data-act="gCopy">${ic("file")}ほかの調査区から写す</button></div>` : `<div class="ztitle">備考</div>`) + itemsHTML(its, a, {});
     paintIcons($("#gzBody")); refreshVisibility();
+  }
+  async function gZoneSel(z) {
+    const c = S.cur, a = c.rec.ans, act = activeZones(c.rec.site, a);
+    const next = act.includes(z) ? act.filter((x) => x !== z) : GK.zones.map((x) => x[0]).filter((x) => act.includes(x) || x === z);
+    if (!next.length) { toast("調査区は1つ以上選んでください"); return; }
+    if (act.includes(z) && zoneHasData(a, z) && !(await dialog({ title: `${zoneName(a, z)}を外しますか？`, body: "<p>入力済みの内容は残りますが、画面と出力には表示されなくなります。</p>", ok: "外す" }))) return;
+    a.zones = next; await saveCur(); renderGZone();
   }
   async function gCopy() {
     const c = S.cur, a = c.rec.ans, z = S.gZone;
-    const from = GK.zones.filter(([k]) => k !== z && GK.rows.some((r) => filled(a[`${k}|${r.id}`])));
+    const act = activeZones(c.rec.site, a), from = GK.zones.filter(([k]) => k !== z && act.includes(k) && GK.rows.some((r) => filled(a[`${k}|${r.id}`])));
     if (!from.length) { toast("写せる調査区がありません（ほかの調査区が未入力）"); return; }
     const v = await formDialog({ title: `${zoneName(a, z)} に写す`, body: `<p class="small muted">選んだ調査区の入力内容を写します（この調査区の入力済みの項目は上書きします）。</p>`, fields: [{ id: "z", label: "写す元", options: from.map((x) => zoneName(a, x[0])), required: true }], ok: "写す" });
     if (!v) return;
@@ -1326,13 +1345,13 @@ window.Store = (function () {
       <div class="btnrow" style="margin-bottom:6px"><button class="btn line mini" data-act="posHere">${ic("locate")}現在地を記録</button><button class="btn line mini" data-act="movePlot">${ic("move")}地図で位置を直す</button></div>
       ${metaHTML(rec)}${itemsHTML(VEG.items, rec.ans, {})}
       <div class="sec">階層構造</div>
-      <table class="layertbl"><colgroup><col class="c1"><col class="c2"><col class="c3"><col></colgroup><thead><tr><th>階層</th><th>高さ(m)<br><small>自動</small></th><th>植被率%</th><th>優占種（自動）</th></tr></thead><tbody>
-        ${VEG.layers.map(([k, n]) => { const L = rec.layers[k] || {}; return `<tr><td>${esc(n)}</td><td><span class="dom num" data-domh="${k}">${esc(L.h ?? "")}</span></td><td><input class="inp" inputmode="decimal" data-layer="${k}.c" value="${esc(L.c ?? "")}"></td><td><span class="dom" data-dom="${k}">${esc(L.d ?? "")}</span></td></tr>`; }).join("")}
+      <table class="layertbl"><colgroup><col class="c1"><col class="c2"><col class="c3"><col></colgroup><thead><tr><th>階層</th><th>高さ(m)</th><th>植被率%</th><th>優占種（自動）</th></tr></thead><tbody>
+        ${VEG.layers.map(([k, n]) => { const L = rec.layers[k] || {}; return `<tr><td>${esc(n)}</td><td><input class="inp" inputmode="decimal" data-layer="${k}.h" value="${esc(L.h ?? "")}"></td><td><input class="inp" inputmode="decimal" data-layer="${k}.c" value="${esc(L.c ?? "")}"></td><td><span class="dom" data-dom="${k}">${esc(L.d ?? "")}</span></td></tr>`; }).join("")}
       </tbody></table>
       <div class="sec">出現種（<span id="spCount"></span>）</div>
       <div class="spadd">
         <div class="seg sq" id="vaL">${VEG.layers.map(([k, n]) => `<button type="button" data-act="vaL" data-v="${k}"${S.vegAdd.l === k ? ' class="on"' : ""}>${esc(n.replace("層", ""))}</button>`).join("")}</div>
-        <div class="row"><input class="inp" id="vaN" list="spList" placeholder="種名（カタカナ）" autocomplete="off" enterkeyhint="done"><span class="unitbox" style="flex:0 0 96px"><input class="inp" id="vaH" inputmode="decimal" placeholder="高さ"><span class="unit">m</span></span></div>
+        <div class="row"><input class="inp" id="vaN" list="spList" placeholder="種名（カタカナ）" autocomplete="off" enterkeyhint="done"></div>
         <div class="row"><span>被度</span><div class="seg sq" id="vaC">${VEG.cover.map((c) => `<button type="button" data-act="vaC" data-v="${c}" title="${esc(VEG.coverDesc[c] || "")}">${c}</button>`).join("")}</div></div>
         <div class="row"><span>群度</span><div class="seg sq" id="vaS">${VEG.soc.map((c) => `<button type="button" data-act="vaS" data-v="${c}" title="${esc(VEG.socDesc[c] || "")}">${c}</button>`).join("")}</div></div>
         <button class="btn main block" data-act="addSp" style="margin-top:10px">${ic("plus")}追加</button>
@@ -1355,9 +1374,6 @@ window.Store = (function () {
       const sp = (rec.sp || []).filter((s) => s.l === l); let d = "";
       if (sp.length) { const best = Math.max(...sp.map((s) => COVER_RANK(s.c) * 10 + (+s.s || 0))); d = sp.filter((s) => COVER_RANK(s.c) * 10 + (+s.s || 0) === best).map((s) => s.n).join("・"); }
       if (((rec.layers[l] || {}).d || "") !== d) { (rec.layers[l] = rec.layers[l] || {}).d = d; changed = true; }
-      // 階層の高さ：その階層で最も高い種の高さ
-      const hs = sp.map((x) => nv(x.h)).filter((v) => v != null), h = hs.length ? Math.max(...hs) : "";
-      if (String((rec.layers[l] || {}).h ?? "") !== String(h)) { (rec.layers[l] = rec.layers[l] || {}).h = h; changed = true; }
     }
     return changed;
   }
@@ -1406,10 +1422,9 @@ window.Store = (function () {
     const rec = S.cur && S.cur.rec; if (!rec || rec.kind !== "veg") return;
     if (updateDominants(rec)) saveCur("quiet");
     for (const el of $$("[data-dom]")) el.textContent = (rec.layers[el.dataset.dom] || {}).d || "";
-    for (const el of $$("[data-domh]")) el.textContent = (rec.layers[el.dataset.domh] || {}).h ?? "";
     const ul = $("#spUl"); if (!ul) return;
     const by = {}; rec.sp.forEach((s, k) => (by[s.l] = by[s.l] || []).push([s, k]));
-    ul.innerHTML = LAYER_ORDER.filter((l) => by[l]).map((l) => `<li class="lyr">${esc(LAYER_JP[l])}（${by[l].length}種）</li>${by[l].map(([s, k]) => `<li class="sp${!s.c || !s.s ? " miss" : ""}"><span class="nm">${esc(s.n)}${s.h !== "" && s.h != null ? `<small class="muted"> ${esc(s.h)}m</small>` : ""}</span><button type="button" class="bb${!s.c || !s.s ? " miss" : ""}" data-act="editSp" data-k="${k}">${esc(bb(s))}</button><button class="icon-btn" data-act="editSp" data-k="${k}" aria-label="${esc(s.n)}を修正">${ic("edit")}</button></li>`).join("")}`).join("") || `<li class="empty small">まだ出現種がありません。階層・種名・被度・群度を選んで「追加」します。</li>`;
+    ul.innerHTML = LAYER_ORDER.filter((l) => by[l]).map((l) => `<li class="lyr">${esc(LAYER_JP[l])}（${by[l].length}種）</li>${by[l].map(([s, k]) => `<li class="sp${!s.c || !s.s ? " miss" : ""}"><span class="nm">${esc(s.n)}</span><button type="button" class="bb${!s.c || !s.s ? " miss" : ""}" data-act="editSp" data-k="${k}">${esc(bb(s))}</button><button class="icon-btn" data-act="editSp" data-k="${k}" aria-label="${esc(s.n)}を修正">${ic("edit")}</button></li>`).join("")}`).join("") || `<li class="empty small">まだ出現種がありません。階層・種名・被度・群度を選んで「追加」します。</li>`;
     const miss = rec.sp.filter((s) => !s.c || !s.s).length;
     $("#spCount").innerHTML = `${new Set(rec.sp.map((s) => s.n)).size}種・${rec.sp.length}件${miss ? `　<span class="missbadge">被度・群度の未入力 ${miss}件</span>` : ""}`;
   }
@@ -1418,12 +1433,11 @@ window.Store = (function () {
     if (!n) { toast("種名を入力してください"); $("#vaN").focus(); return; }
     const dup = rec.sp.findIndex((s) => s.l === a.l && s.n === n);
     if (dup >= 0 && !(await dialog({ title: "同じ階層に同じ種があります", body: `<p>${esc(LAYER_JP[a.l])}の「${esc(n)}」（${esc(bb(rec.sp[dup]))}）を上書きしますか？</p>`, ok: "上書き" }))) return;
-    const hv = nv(($("#vaH").value || "").replace(/[０-９．]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)));
-    const item = { l: a.l, n, c: a.c || "", s: a.s || "", h: hv ?? "" };
+    const item = { l: a.l, n, c: a.c || "", s: a.s || "" };
     if (dup >= 0) rec.sp[dup] = item; else rec.sp.push(item);
     rec.sp.sort((p, q) => LAYER_ORDER.indexOf(p.l) - LAYER_ORDER.indexOf(q.l));
     await saveCur("quiet"); renderSpList();
-    $("#vaN").value = ""; $("#vaH").value = ""; a.c = ""; a.s = ""; $$("#vaC button, #vaS button").forEach((b) => b.classList.remove("on"));
+    $("#vaN").value = ""; a.c = ""; a.s = ""; $$("#vaC button, #vaS button").forEach((b) => b.classList.remove("on"));
     toast(`${LAYER_JP[item.l]}：${n}（${bb(item)}）を追加しました${!item.c || !item.s ? "。被度・群度は後で入力できます" : ""}`, 1800);
     if (!isWide()) $("#vaN").blur(); else $("#vaN").focus();
   }
@@ -1432,7 +1446,7 @@ window.Store = (function () {
     const d = document.createElement("div"); d.className = "modal-wrap";
     d.innerHTML = `<div class="modal"><h3>出現種を修正</h3>
       <label class="field"><span class="lbl">階層</span><div class="seg sq" data-g="l">${VEG.layers.map(([key, nm]) => `<button data-v="${key}"${s.l === key ? ' class="on"' : ""}>${esc(nm)}</button>`).join("")}</div></label>
-      <div class="grid2"><label class="field"><span class="lbl">種名</span><input class="inp" id="esN" list="spList" value="${esc(s.n)}"></label><label class="field"><span class="lbl">高さ（m）</span><input class="inp" id="esH" inputmode="decimal" value="${esc(s.h ?? "")}"></label></div>
+      <label class="field"><span class="lbl">種名</span><input class="inp" id="esN" list="spList" value="${esc(s.n)}"></label>
       <label class="field"><span class="lbl">被度</span><div class="seg sq" data-g="c">${VEG.cover.map((c) => `<button data-v="${c}"${s.c === c ? ' class="on"' : ""}>${c}</button>`).join("")}</div></label>
       <label class="field"><span class="lbl">群度</span><div class="seg sq" data-g="s">${VEG.soc.map((c) => `<button data-v="${c}"${s.s === c ? ' class="on"' : ""}>${c}</button>`).join("")}</div></label>
       <div class="btnrow"><button class="btn danger" data-r="del">削除</button><button class="btn line" data-r="0">やめる</button><button class="btn main" data-r="1">保存</button></div></div>`;
@@ -1443,7 +1457,7 @@ window.Store = (function () {
       const r = e.target.closest("[data-r]"); if (!r) return;
       if (r.dataset.r === "0") { d.remove(); return; }
       if (r.dataset.r === "del") { rec.sp.splice(k, 1); }
-      else { v.n = toKata($("#esN", d).value.trim()); v.h = nv($("#esH", d).value) ?? ""; if (!v.n) { toast("種名を入力してください"); return; } rec.sp[k] = v; rec.sp.sort((p, q) => LAYER_ORDER.indexOf(p.l) - LAYER_ORDER.indexOf(q.l)); }
+      else { v.n = toKata($("#esN", d).value.trim()); if (!v.n) { toast("種名を入力してください"); return; } rec.sp[k] = v; rec.sp.sort((p, q) => LAYER_ORDER.indexOf(p.l) - LAYER_ORDER.indexOf(q.l)); }
       d.remove(); await saveCur("quiet"); renderSpList();
     });
   }
@@ -1585,6 +1599,7 @@ window.Store = (function () {
       case "openGaikyo": openGaikyo(d.site); break;
       case "gZone": S.gZone = d.z; renderGZone(); { const t = $("#gzTabs"), b = $("#sheetBody"); if (t && t.getBoundingClientRect().top < b.getBoundingClientRect().top) b.scrollTop += t.getBoundingClientRect().top - b.getBoundingClientRect().top - 4; } break;
       case "gCopy": gCopy(); break;
+      case "gZoneSel": gZoneSel(d.z); break;
       case "addSite": { const s = await addSite(); if (s) openGaikyo(s); break; }
       case "posHere": setCurPos(await getPosition()); break;
       case "posCenter": { const m = map.getCenter(); setCurPos({ lon: m.lng, lat: m.lat }); break; }
@@ -1988,9 +2003,9 @@ window.Store = (function () {
     sh.row(row, ["階層", "高さ(m)", "植被率(%)", "優占種", "", ""], 1).merge(row, 3, row, 5); row++;
     for (const [k, n] of VEG.layers) { const x = L[k] || {}; sh.row(row, [n, num(x.h), num(x.c), x.d || "", "", ""], 2); sh.set(row, 0, n, 6); sh.merge(row, 3, row, 5); row++; }
     row++;
-    sh.row(row, ["No.", "階層", "種名", "高さ(m)", "被度", "群度"], 1); sh.freeze = null; row++;
+    sh.row(row, ["No.", "階層", "種名", "", "被度", "群度"], 1).merge(row, 2, row, 3); sh.freeze = null; row++;
     const sp = r ? (r.sp || []) : [], n = r ? Math.max(sp.length, 1) : 60, r0 = row;
-    for (let k = 0; k < n; k++) { const s = sp[k]; sh.row(row, [k + 1, s ? LAYER_JP[s.l] : "", s ? s.n : "", s ? num(s.h) : "", s ? s.c || "" : "", s ? s.s || "" : ""], 2); sh.set(row, 0, k + 1, 7); sh.set(row, 3, s ? num(s.h) : "", 7); sh.set(row, 4, s ? s.c || "" : "", s && !s.c ? 9 : 7); sh.set(row, 5, s ? s.s || "" : "", s && !s.s ? 9 : 7); row++; }
+    for (let k = 0; k < n; k++) { const s = sp[k]; sh.row(row, [k + 1, s ? LAYER_JP[s.l] : "", s ? s.n : "", "", s ? s.c || "" : "", s ? s.s || "" : ""], 2); sh.set(row, 0, k + 1, 7); sh.merge(row, 2, row, 3); sh.set(row, 4, s ? s.c || "" : "", s && !s.c ? 9 : 7); sh.set(row, 5, s ? s.s || "" : "", s && !s.s ? 9 : 7); row++; }
     if (!r) { sh.list(r0, 1, row - 1, 1, VEG.layers.map((l) => l[1])); sh.list(r0, 4, row - 1, 4, VEG.cover); sh.list(r0, 5, row - 1, 5, VEG.soc); sh.list(r0, 2, row - 1, 2, `'種名一覧'!$A$2:$A$${SPN.length + 1}`); }
     row++;
     sh.set(row, 0, `被度：${VEG.cover.map((c) => `${c} ${VEG.coverDesc[c] || ""}`).join("／")}`, 8).merge(row, 0, row, 5); sh.heights[row] = 30; row++;
@@ -2034,7 +2049,7 @@ window.Store = (function () {
     let gr = 1;
     for (const s of sites) { const r = R.get(recId.gaikyo(s)); if (!r) continue; const a = r.ans;
       const notes = GKr.filter((x) => filled(a["note|" + x.row])).map((x) => `${x.label}：${a["note|" + x.row]}`).concat(filled(a.otherName) ? [`その他の内容：${a.otherName}`] : []).join("／");
-      for (const [z] of GK.zones) {
+      for (const z of activeZones(s, a)) {
         const ls_ = nv(a[`${z}|lightSite`]), lr = nv(a[`${z}|lightRef`]);
         gs.row(gr++, [s, zoneName(a, z), ST_LABEL[statusOf(r)], r.date, r.by, a.weather || "", r.lat ?? "", r.lon ?? "", ...GKr.map((x) => x.get(a, z)), ls_ != null && lr ? Math.round(ls_ / lr * 1000) / 10 : "", spAvg(spVals(a, z)), notes, photoList("gaikyo", r)], 3);
       } }
@@ -2043,7 +2058,7 @@ window.Store = (function () {
     const sites = siteList().filter((s) => !site || s === site);
     const sps = add("樹木間隔").width([16, 14, ...Array(10).fill(7), 9]);
     sps.row(0, ["調査地", "調査区", ...Array.from({ length: 10 }, (_, k) => `No.${k + 1}`), "平均(m)"], 1); sps.freeze = [1, 2];
-    let spr = 1; for (const s of sites) { const r = R.get(recId.gaikyo(s)); if (!r) continue; for (const [z] of GK.zones) { const v = spVals(r.ans, z); sps.row(spr++, [s, zoneName(r.ans, z), ...v.map((y) => y ?? ""), spAvg(v)], 2); } }
+    let spr = 1; for (const s of sites) { const r = R.get(recId.gaikyo(s)); if (!r) continue; for (const z of activeZones(s, r.ans)) { const v = spVals(r.ans, z); sps.row(spr++, [s, zoneName(r.ans, z), ...v.map((y) => y ?? ""), spAvg(v)], 2); } }
   }
   // 植生調査：調査区・出現種・素表・調査区ごとの調査票
   async function buildVeg(site) {
@@ -2055,9 +2070,9 @@ window.Store = (function () {
       pc.row(k + 1, [r.no, r.site || "", a.spot || r.site || "", a.forest || "", a.growth || "", ST_LABEL[statusOf(r)], r.date, r.by, r.lat ?? "", r.lon ?? "", side ?? "", side ? Math.round(side * side * 100) / 100 : "", a.human || "", num(a.years),
         ...VEG.layers.flatMap(([l]) => [num((L[l] || {}).h), num((L[l] || {}).c), (L[l] || {}).d || ""]), new Set((r.sp || []).map((s) => s.n)).size, miss || "", a.note || "", photoList("veg", r)], 2);
       if (miss) pc.set(k + 1, 15 + VEG.layers.length * 3, miss, 9); });
-    const ps = bk.add("植生_出現種").width([12, 10, 22, 8, 7, 7]);
-    ps.row(0, ["調査区番号", "階層", "種名", "高さ(m)", "被度", "群度"], 1); ps.freeze = [1, 0];
-    let pr = 1; for (const r of plots) for (const s of r.sp || []) { ps.row(pr, [r.no, LAYER_JP[s.l], s.n, num(s.h), s.c || "", s.s || ""], 2); if (!s.c) ps.set(pr, 4, "", 9); if (!s.s) ps.set(pr, 5, "", 9); pr++; }
+    const ps = bk.add("植生_出現種").width([12, 10, 22, 7, 7]);
+    ps.row(0, ["調査区番号", "階層", "種名", "被度", "群度"], 1); ps.freeze = [1, 0];
+    let pr = 1; for (const r of plots) for (const s of r.sp || []) { ps.row(pr, [r.no, LAYER_JP[s.l], s.n, s.c || "", s.s || ""], 2); if (!s.c) ps.set(pr, 3, "", 9); if (!s.s) ps.set(pr, 4, "", 9); pr++; }
     const st = bk.add("植生_素表").width([10, 22, ...plots.map(() => 9), 8]);
     st.row(0, ["階層", "種名", ...plots.map((r) => r.no), "出現回数"], 1); st.freeze = [1, 2];
     const keyset = new Map();
@@ -2212,6 +2227,18 @@ window.Store = (function () {
     });
     return { imgs, xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${NS_R}">${anchors}</xdr:wsDr>` };
   }
+  // 列を非表示にする（<col> の範囲を分けて hidden を付ける）
+  function hideCol(doc, letter) {
+    const ci = colIdx(letter + "1") + 1, cols = doc.getElementsByTagNameNS(NS_M, "cols")[0]; if (!cols) return;
+    for (const c of [...cols.getElementsByTagNameNS(NS_M, "col")]) {
+      const mn = +c.getAttribute("min"), mx = +c.getAttribute("max"); if (ci < mn || ci > mx) continue;
+      const mk = (a, b, hide) => { const n = c.cloneNode(true); n.setAttribute("min", String(a)); n.setAttribute("max", String(b)); if (hide) n.setAttribute("hidden", "1"); return n; };
+      if (mn < ci) cols.insertBefore(mk(mn, ci - 1, false), c);
+      cols.insertBefore(mk(ci, ci, true), c);
+      if (ci < mx) cols.insertBefore(mk(ci + 1, mx, false), c);
+      cols.removeChild(c); return;
+    }
+  }
   // 概況調査票の下に「樹木間隔」の表を追加（No.1〜10と平均。書式は様式の見出し・記入欄と同じ）
   // 概況調査票の下に「樹木間隔」の表を追加（調査区ごとに No.1〜10 と平均。列は調査区の列と同じ）
   const spVals = (a, z) => Array.from({ length: 10 }, (_, k) => nv(a[`${z}|sp${k + 1}`]));
@@ -2283,6 +2310,8 @@ window.Store = (function () {
       for (const [ref, txt] of GK.labels || []) bk.set(d, ref, txt);
       bk.set(d, C.title, title0.replace(/―.*$/, `―　${s}`) || s);
       bk.set(d, C.date, r ? xlDate(r.date) : ""); bk.set(d, C.by, r ? r.by || "" : ""); bk.set(d, C.weather, a.weather || "");
+      const act = activeZones(s, a);
+      GK.zones.forEach(([z], k) => { if (!act.includes(z)) hideCol(d, C.zoneCols[k]); });
       if (!r) { for (const [k] of GK.zones.entries()) for (const row of gRowDefs()) bk.set(d, C.zoneCols[k] + row.row, ""); writeSpacing(bk, d, {}, false); continue; }
       GK.zones.forEach(([z], k) => {
         const col = C.zoneCols[k];
