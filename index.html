@@ -413,7 +413,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.8.0（2026-11-11）",   // 更新したら sw.js の VERSION も変える
+  version: "1.8.1（2026-11-11）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -478,8 +478,10 @@ window.APP_CONFIG = {
     // ===== 概況調査（調査地ごと。様式「概況調査票」。列＝調査区） =====
     gaikyo: {
       label: "概況調査", photoCaps: ["林況", "林内", "林床", "構造物", "のり面", "光環境"],
-      head: [{ id: "weather", label: "天候", type: "buttons", options: ["晴", "曇", "雨"] },
-        { id: "sp", section: "樹木間隔（調査地ごとに10か所）", label: "樹木間隔 No.1〜10（m）", type: "nums", fields: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => ({ id: "sp" + k, label: "No." + k, max: 100 })) },
+      head: [{ id: "weather", label: "天候", type: "buttons", options: ["晴", "曇", "雨"] }],
+      // 樹木間隔：調査区（針葉樹_良好区など）ごとに10か所
+      spacing: [
+        { id: "sp", section: "11 樹木間隔（調査区ごとに10か所）", label: "樹木間隔 No.1〜10（m）", type: "nums", fields: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => ({ id: "sp" + k, label: "No." + k, max: 100 })) },
         { id: "spCalc", type: "calc", calc: "spacing10" }],
       zones: [["cg", "針葉樹_良好区"], ["cb", "針葉樹_不良区"], ["bg", "広葉樹_良好区"], ["bb", "広葉樹_不良区"]],
       rows: [
@@ -488,8 +490,8 @@ window.APP_CONFIG = {
         { id: "strState", row: 8, label: "状態", type: "buttons", options: ["健全", "一部破損", "破損・倒壊"] },
         { id: "mgmt", rows: [9, 10, 11, 12, 13, 14, 15, 16], section: "3 管理状況", label: "実施した管理（タッチして選択）", type: "multi", options: ["間伐", "下草刈り", "枯損木処理", "枝打ち", "病虫害防除", "潅水", "補植", "その他"], help: "選んだ項目は ●、選ばなかった項目は × で調査票に出力します。「その他」の内容は「備考」タブに入力します" },
         { id: "lowH", row: 17, section: "4 下枝の状況", label: "下枝高（m）", type: "number", unit: "m", max: 30 },
-        { id: "deadState", row: 18, label: "枯れの状態", type: "buttons", options: ["あり", "あり（軽微）", "なし"] },
-        { id: "deadH", row: 19, label: "枯れ下がり高さ（m）", type: "number", unit: "m", max: 30 },
+        { id: "deadH", row: 18, label: "枯れ下がり高さ（m）", type: "number", unit: "m", max: 30 },
+        { id: "deadState", row: 19, label: "枯れの状態", type: "buttons", options: ["あり", "あり（軽微）", "なし"] },
         { id: "landform", row: 20, section: "5 地形", label: "地形", type: "buttons", options: ["尾根", "斜面上部", "斜面中部", "斜面下部", "谷・沢沿い", "平地・台地", "低地・氾濫原", "湿地", "海岸砂丘", "岩場・崖", "のり肩", "のり尻"] },
         { id: "slope", row: 21, label: "斜面傾斜角（°）", type: "number", unit: "°", max: 90 },
         { id: "aspect", row: 22, label: "斜面方位", type: "select", options: ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "―"] },
@@ -508,6 +510,8 @@ window.APP_CONFIG = {
       // 様式のセル：調査日・調査者・天候・調査区の列・備考の列・「その他（ ）」・表題
       // 樹木間隔は様式の下（35行目〜）に表を追加して出力
       spacingRow: 35,
+      // 項目の順番を入れ替えた行の見出し（様式の文言を上書き）
+      labels: [["C18", "枯れ下がり高さ（m）"], ["C19", "枯れの状態"]],
       tpl: { date: "C3", by: "E3", weather: "H3", zoneCols: ["D", "E", "F", "G"], zoneRow: 5, noteCol: "H", otherCell: "C16", title: "A1" },
     },
     // ===== 植生調査（調査区ごと・Braun-Blanquet法） =====
@@ -962,7 +966,7 @@ window.Store = (function () {
     spacing: (a) => { const s = treeMetrics(a).s; return s == null ? "樹木間隔の平均値を計算します" : `樹木間隔 平均 <b>${s}</b>`; },
     vitality: (a, c) => { const v = vitality(c.items, a, c.ctx); return v ? `活力度 <b>${v.avg.toFixed(1)}</b>（${v.n}項目の平均）→ 判定：<b>${esc(v.cls)}</b>` : "評価（0〜4）を入力すると活力度と判定を計算します"; },
     area: (a) => { const s = nv(a.side); return s ? `面積 <b>${Math.round(s * s * 100) / 100}</b> m²（${s}m × ${s}m の方形区・自動計算）` : "一辺を入力すると面積を自動で計算します"; },
-    spacing10: (a) => { const x = Array.from({ length: 10 }, (_, k) => nv(a["sp" + (k + 1)])).filter((v) => v != null); return x.length ? `樹木間隔 平均 <b>${Math.round(x.reduce((p, q) => p + q, 0) / x.length * 100) / 100}</b> m（${x.length}か所）` : "測定した間隔を入力すると平均値を計算します"; },
+    spacing10: (a, c, z) => { const p = z ? z + "|" : "", x = Array.from({ length: 10 }, (_, k) => nv(a[p + "sp" + (k + 1)])).filter((v) => v != null); return x.length ? `樹木間隔 平均 <b>${Math.round(x.reduce((p, q) => p + q, 0) / x.length * 100) / 100}</b> m（${x.length}か所）` : "測定した間隔を入力すると平均値を計算します"; },
     light: (a, c, z) => { const p = z ? z + "|" : "", s = nv(a[p + "lightSite"]), r = nv(a[p + "lightRef"]); return s != null && r ? `相対光量子束密度（参考）：<b>${Math.round(s / r * 1000) / 10}</b> %` : "調査地と対照地の測定値から相対値（%）を計算します（参考）"; },
   };
   const hasVoice = () => !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -1207,6 +1211,7 @@ window.Store = (function () {
   const zoneItems = (z) => [
     { id: `${z}|name`, label: "調査区名（現地に合わせて変更可）", type: "line", placeholder: GK.zones.find((x) => x[0] === z)[1] },
     ...GK.rows.map((r) => ({ ...r, id: `${z}|${r.id}`, zone: z })),
+    ...(GK.spacing || []).map((r) => ({ ...r, id: `${z}|${r.id}`, zone: z, fields: r.fields && r.fields.map((f) => ({ ...f, id: `${z}|${f.id}` })) })),
   ];
   // 様式の行ごとの定義（管理状況は選択肢1つが1行）。get(ans, 調査区) で調査票に書く値
   const zoneHasData = (a, z) => GK.rows.some((r) => filled(a[`${z}|${r.id}`]));
@@ -2011,10 +2016,9 @@ window.Store = (function () {
     sites.forEach((s, k) => { const r = gk[k]; if (!r) return; const a = r.ans;
       const notes = GKr.filter((x) => filled(a["note|" + x.row])).map((x) => `${x.label}：${a["note|" + x.row]}`).concat(filled(a.otherName) ? [`その他の内容：${a.otherName}`] : []).join("／");
       for (const [z] of GK.zones) gs.row(gr++, [s, zoneName(a, z), ST_LABEL[statusOf(r)], r.date, r.by, a.weather || "", ...GKr.map((x) => x.get(a, z)), notes], 3); });
-    const sps = bk.add("樹木間隔").width([16, ...Array(10).fill(7), 9]);
-    sps.row(0, ["調査地", ...Array.from({ length: 10 }, (_, k) => `No.${k + 1}`), "平均(m)"], 1); sps.freeze = [1, 1];
-    let spr = 1; sites.forEach((s, k) => { const r = gk[k]; if (!r) return; const v = Array.from({ length: 10 }, (_, j) => nv(r.ans["sp" + (j + 1)])), x = v.filter((y) => y != null);
-      sps.row(spr++, [s, ...v.map((y) => y ?? ""), x.length ? Math.round(x.reduce((p, q) => p + q, 0) / x.length * 100) / 100 : ""], 2); });
+    const sps = bk.add("樹木間隔").width([16, 14, ...Array(10).fill(7), 9]);
+    sps.row(0, ["調査地", "調査区", ...Array.from({ length: 10 }, (_, k) => `No.${k + 1}`), "平均(m)"], 1); sps.freeze = [1, 2];
+    let spr = 1; sites.forEach((s, k) => { const r = gk[k]; if (!r) return; for (const [z] of GK.zones) { const v = spVals(r.ans, z); sps.row(spr++, [s, zoneName(r.ans, z), ...v.map((y) => y ?? ""), spAvg(v)], 2); } });
     // 植生（植生野帳の読み込み形式）
     const pc = bk.add("植生_調査区"), PH = ["調査区番号", "調査日", "調査者", "都道府県", "地点名", "緯度", "経度", "標高(m)", "傾斜(°)", "方位", "微地形", "土壌", "土壌の湿り", "人為的影響", "攪乱後の年数", "群落の種類", "区画", "面積(m2)",
       ...VEG.layers.flatMap(([, n]) => [`${n}_高さ(m)`, `${n}_植被率(%)`]), "植生帯の指定", "気候区分の指定", "群（手動）", "解析に含める", "状態", "メモ", "内部ID", "調査地", "群落名（現地）", "優占種", "写真ファイル", "樹林の種類", "生育状況"];
@@ -2157,18 +2161,21 @@ window.Store = (function () {
     return { imgs, xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${NS_R}">${anchors}</xdr:wsDr>` };
   }
   // 概況調査票の下に「樹木間隔」の表を追加（No.1〜10と平均。書式は様式の見出し・記入欄と同じ）
+  // 概況調査票の下に「樹木間隔」の表を追加（調査区ごとに No.1〜10 と平均。列は調査区の列と同じ）
+  const spVals = (a, z) => Array.from({ length: 10 }, (_, k) => nv(a[`${z}|sp${k + 1}`]));
+  const spAvg = (v) => { const x = v.filter((y) => y != null); return x.length ? Math.round(x.reduce((p, q) => p + q, 0) / x.length * 100) / 100 : ""; };
   function writeSpacing(bk, d, a, withData) {
-    const r0 = GK.spacingRow, cols = ["D", "E", "F", "G", "H"], vals = Array.from({ length: 10 }, (_, k) => withData ? nv(a["sp" + (k + 1)]) : null);
-    bk.set(d, "A" + r0, "", "B6"); bk.set(d, "B" + r0, "", "B6"); bk.set(d, "C" + r0, "11 樹木間隔（m）", "C5"); for (const c of ["D", "E", "F", "G", "H"]) bk.set(d, c + r0, c === "D" ? "調査地ごとに10か所測定" : "", "C6");
-    for (let h = 0; h < 2; h++) {
-      const rh = r0 + 1 + h * 2, rv = rh + 1;
-      bk.set(d, "C" + rh, "測定No.", "C5"); bk.set(d, "C" + rv, "間隔（m）", "C6");
-      cols.forEach((c, k) => { bk.set(d, c + rh, `No.${h * 5 + k + 1}`, "D5"); bk.set(d, c + rv, vals[h * 5 + k] ?? "", "D27"); });
-      for (const c of ["A", "B"]) { bk.set(d, c + rh, "", "B6"); bk.set(d, c + rv, "", "B6"); }
+    const C = GK.tpl, r0 = GK.spacingRow;
+    bk.set(d, "A" + r0, "", "B6"); bk.set(d, "B" + r0, "", "B6"); bk.set(d, "C" + r0, "11 樹木間隔（m）", "C5");
+    GK.zones.forEach(([z, nm], k) => bk.set(d, C.zoneCols[k] + r0, withData ? zoneName(a, z) : nm, "D5"));
+    bk.set(d, C.noteCol + r0, "", "C5");
+    for (let i = 0; i <= 10; i++) {
+      const rr = r0 + 1 + i;
+      for (const c of ["A", "B"]) bk.set(d, c + rr, "", "B6");
+      bk.set(d, "C" + rr, i < 10 ? `No.${i + 1}` : "平均", "C6");
+      GK.zones.forEach(([z], k) => { const v = withData ? spVals(a, z) : []; bk.set(d, C.zoneCols[k] + rr, i < 10 ? v[i] ?? "" : withData ? spAvg(v) : "", "D27"); });
+      bk.set(d, C.noteCol + rr, "", "H27");
     }
-    const x = vals.filter((v) => v != null), ra = r0 + 5;
-    bk.set(d, "C" + ra, "平均（m）", "C6"); bk.set(d, "D" + ra, x.length ? Math.round(x.reduce((p, q) => p + q, 0) / x.length * 100) / 100 : "", "D27");
-    for (const c of ["A", "B"]) bk.set(d, c + ra, "", "B6");
   }
   // 地上部調査票：1本1シート＋集計表。withData=false で記入用（ヘッダーだけ）
   async function buildChijoBook(site, withData) {
@@ -2219,7 +2226,8 @@ window.Store = (function () {
     if (sites.length) for (const s of bk.sheets) if (s.orig) s.keep = false;
     for (const s of sites) {
       const r = withData ? R.get(recId.gaikyo(s)) : null, a = r ? r.ans : {};
-      const sh = await bk.copy(src, s, `$A$1:$H$${GK.spacingRow + 6}`), d = await bk.doc(sh);
+      const sh = await bk.copy(src, s, `$A$1:$H$${GK.spacingRow + 11}`), d = await bk.doc(sh);
+      for (const [ref, txt] of GK.labels || []) bk.set(d, ref, txt);
       bk.set(d, C.title, title0.replace(/―.*$/, `―　${s}`) || s);
       bk.set(d, C.date, r ? xlDate(r.date) : ""); bk.set(d, C.by, r ? r.by || "" : ""); bk.set(d, C.weather, a.weather || "");
       if (!r) { for (const [k] of GK.zones.entries()) for (const row of gRowDefs()) bk.set(d, C.zoneCols[k] + row.row, ""); writeSpacing(bk, d, {}, false); continue; }
