@@ -231,6 +231,20 @@ textarea.inp { min-height: 76px; resize: vertical; }
 .layertbl .inp { padding: 8px 7px; font-size: 15px; }
 .spadd { background: var(--surface-2); border-radius: var(--r-md); padding: 10px; margin-bottom: 12px; }
 .spadd .seg button { min-height: 34px; padding: 5px 10px; }
+.bblbl { margin: 10px 0 4px; font-size: 13px; font-weight: 700; display: flex; gap: 8px; align-items: baseline; }
+.bblbl span { color: var(--k-veg); font-size: 12.5px; }
+.bbmini { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.bbmini.soc { grid-template-columns: repeat(5, 1fr); }
+.bbmini button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 4px 2px 3px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: #17241b; min-height: 0; min-width: 0; }
+.bbmini .fig { position: relative; display: block; width: 100%; max-width: 44px; aspect-ratio: 1; }
+.bbmini.soc .fig { max-width: 50px; }
+.bbmini .fig svg { width: 100%; height: 100%; display: block; }
+.bbmini .fig b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 17px; font-weight: 800; color: #14231a; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 5px #fff, 0 0 5px #fff; }
+.bbmini small { font-size: 9.5px; line-height: 1.2; color: var(--muted); white-space: nowrap; letter-spacing: -.02em; }
+.bbmini.soc small { font-size: 10.5px; }
+.bbmini button.on { border-color: var(--k-veg); background: #f1eafb; box-shadow: 0 0 0 2px var(--k-veg); }
+.bbmini button.on b { color: var(--k-veg); }
+.bbmini button.on small { color: var(--k-veg); font-weight: 700; }
 .spadd .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .spadd .row > span { font-size: 12px; color: var(--muted); width: 34px; flex: none; }
 .splist { list-style: none; margin: 0; padding: 0; }
@@ -417,7 +431,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.9.3（2026-11-11）",   // 更新したら sw.js の VERSION も変える
+  version: "1.10.0（2026-11-12）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -537,6 +551,9 @@ window.APP_CONFIG = {
       coverShort: { r: "極めてまれ", "+": "少ない", "1": "1/10以下", "2": "1/10〜1/4", "3": "1/4〜1/2", "4": "1/2〜3/4", "5": "3/4以上" },
       soc: ["1", "2", "3", "4", "5"],
       socDesc: { "1": "単独で生えているもの", "2": "小群をなしているもの", "3": "小群のまだら状のもの", "4": "大きなまだら状又は、カーペット状のあちこちに穴があいているような状態のもの", "5": "調査区内にカーペット状に一面に生育しているもの" },
+      // ボタンの図の下に出す短い説明
+      coverMini: { r: "ごくまれ", "+": "少ない", "1": "〜10%", "2": "10〜25%", "3": "25〜50%", "4": "50〜75%", "5": "75%〜" },
+      socMini: { "1": "単独", "2": "小群", "3": "まだら", "4": "穴あき", "5": "カーペット" },
       socShort: { "1": "単独", "2": "小群状", "3": "まだら状", "4": "カーペットに穴がある状態", "5": "カーペット状" },
     },
   },
@@ -1350,8 +1367,8 @@ window.Store = (function () {
       <div class="spadd">
         <div class="seg sq" id="vaL">${VEG.layers.map(([k, n]) => `<button type="button" data-act="vaL" data-v="${k}"${S.vegAdd.l === k ? ' class="on"' : ""}>${esc(n.replace("層", ""))}</button>`).join("")}</div>
         <div class="row"><input class="inp" id="vaN" list="spList" placeholder="種名（カタカナ）" autocomplete="off" enterkeyhint="done"></div>
-        <div class="row"><span>被度</span><div class="seg sq" id="vaC">${VEG.cover.map((c) => `<button type="button" data-act="vaC" data-v="${c}" title="${esc(VEG.coverDesc[c] || "")}">${c}</button>`).join("")}</div></div>
-        <div class="row"><span>群度</span><div class="seg sq" id="vaS">${VEG.soc.map((c) => `<button type="button" data-act="vaS" data-v="${c}" title="${esc(VEG.socDesc[c] || "")}">${c}</button>`).join("")}</div></div>
+        <div class="bblbl">被度<span id="vaCcap"></span></div><div class="bbmini" id="vaC">${bbButtons("c", "vaC")}</div>
+        <div class="bblbl">群度<span id="vaScap"></span></div><div class="bbmini soc" id="vaS">${bbButtons("s", "vaS")}</div>
         <button class="btn main block" data-act="addSp" style="margin-top:10px">${ic("plus")}追加</button>
         ${bbGuideHTML()}
       </div>
@@ -1409,6 +1426,15 @@ window.Store = (function () {
     }
     return `<svg viewBox="0 0 100 100" aria-hidden="true"><rect x="1" y="1" width="98" height="98" fill="${bg}"/>${fill ? `<path d="${fill}" fill="#2f6b3c" stroke="#2f6b3c" stroke-width="2.6" stroke-linejoin="round"/><path d="${fill}" fill="#7cc36a"/>` : ""}${holes ? `<path d="${holes}" fill="#f6f1e6" stroke="#2f6b3c" stroke-width="1.2"/>` : ""}${kind === "c" ? `<path d="M50 2V98M2 50H98" stroke="#7d8a80" stroke-width="1" stroke-dasharray="4 3"/>` : ""}<g stroke="#1f5a2e" stroke-width="1.3" stroke-linecap="round">${ticks}</g><rect x="1" y="1" width="98" height="98" fill="none" stroke="#3d4a40" stroke-width="2"/></svg>`;
   }
+  // 被度・群度のボタン：凡例の図の真ん中に記号、下に短い説明
+  function bbButtons(kind, act, cur) {
+    const vals = kind === "c" ? VEG.cover : VEG.soc, mini = (kind === "c" ? VEG.coverMini : VEG.socMini) || {}, desc = kind === "c" ? VEG.coverDesc : VEG.socDesc;
+    return vals.map((v) => `<button type="button"${act ? ` data-act="${act}"` : ""} data-v="${esc(v)}" title="${esc(desc[v] || "")}" aria-label="${kind === "c" ? "被度" : "群度"} ${esc(v)}：${esc(mini[v] || "")}"${cur === v ? ' class="on"' : ""}><span class="fig">${bbSvg(kind, v)}<b>${esc(v)}</b></span><small>${esc(mini[v] || "")}</small></button>`).join("");
+  }
+  function bbCaption() {
+    const cp = (id, v, m) => { const e = document.getElementById(id); if (e) e.textContent = v ? `${v}：${m[v] || ""}` : ""; };
+    cp("vaCcap", S.vegAdd.c, VEG.coverShort || {}); cp("vaScap", S.vegAdd.s, VEG.socShort || {});
+  }
   function bbGuideHTML() {
     const cv = ["5", "4", "3", "2", "1", "+", "r"], sv = ["5", "4", "3", "2", "1"];
     return `<details class="bbguide"><summary>被度・群度の基準（図で確認）</summary>
@@ -1435,7 +1461,7 @@ window.Store = (function () {
     if (dup >= 0) rec.sp[dup] = item; else rec.sp.push(item);
     rec.sp.sort((p, q) => LAYER_ORDER.indexOf(p.l) - LAYER_ORDER.indexOf(q.l));
     await saveCur("quiet"); renderSpList();
-    $("#vaN").value = ""; a.c = ""; a.s = ""; $$("#vaC button, #vaS button").forEach((b) => b.classList.remove("on"));
+    $("#vaN").value = ""; a.c = ""; a.s = ""; $$("#vaC button, #vaS button").forEach((b) => b.classList.remove("on")); bbCaption();
     toast(`${LAYER_JP[item.l]}：${n}（${bb(item)}）を追加しました${!item.c || !item.s ? "。被度・群度は後で入力できます" : ""}`, 1800);
     if (!isWide()) $("#vaN").blur(); else $("#vaN").focus();
   }
@@ -1445,8 +1471,8 @@ window.Store = (function () {
     d.innerHTML = `<div class="modal"><h3>出現種を修正</h3>
       <label class="field"><span class="lbl">階層</span><div class="seg sq" data-g="l">${VEG.layers.map(([key, nm]) => `<button data-v="${key}"${s.l === key ? ' class="on"' : ""}>${esc(nm)}</button>`).join("")}</div></label>
       <label class="field"><span class="lbl">種名</span><input class="inp" id="esN" list="spList" value="${esc(s.n)}"></label>
-      <label class="field"><span class="lbl">被度</span><div class="seg sq" data-g="c">${VEG.cover.map((c) => `<button data-v="${c}"${s.c === c ? ' class="on"' : ""}>${c}</button>`).join("")}</div></label>
-      <label class="field"><span class="lbl">群度</span><div class="seg sq" data-g="s">${VEG.soc.map((c) => `<button data-v="${c}"${s.s === c ? ' class="on"' : ""}>${c}</button>`).join("")}</div></label>
+      <div class="field"><span class="lbl">被度</span><div class="bbmini" data-g="c">${bbButtons("c", null, s.c)}</div></div>
+      <div class="field"><span class="lbl">群度</span><div class="bbmini soc" data-g="s">${bbButtons("s", null, s.s)}</div></div>
       <div class="btnrow"><button class="btn danger" data-r="del">削除</button><button class="btn line" data-r="0">やめる</button><button class="btn main" data-r="1">保存</button></div></div>`;
     document.body.appendChild(d);
     const v = { ...s };
@@ -1609,8 +1635,8 @@ window.Store = (function () {
       case "movePlot": { const r = c.rec, id = r.id; startPlace(`地図を動かして <b>＋</b> を調査区 ${esc(r.no)} の位置に合わせてください`, async (p) => { S.cur = { kind: "veg", rec: r, items: VEG.items, ctx: {} }; r.lat = +p.lat.toFixed(7); r.lon = +p.lon.toFixed(7); delete r.acc; await saveCur(); openVeg(id); }, r.lat != null ? [r.lon, r.lat] : null); break; }
       case "renamePlot": { const no = await dialog({ title: "調査区番号を変更", input: { value: c.rec.no }, ok: "変更" }); if (!no || no === c.rec.no) break; if (vegRecs().some((r) => r.no === no)) { toast(`調査区番号「${no}」はすでにあります`); break; } c.rec.no = no; await saveCur(); openVeg(c.rec.id); break; }
       case "vaL": S.vegAdd.l = d.v; $$("#vaL button").forEach((b) => b.classList.toggle("on", b.dataset.v === d.v)); break;
-      case "vaC": S.vegAdd.c = S.vegAdd.c === d.v ? "" : d.v; $$("#vaC button").forEach((b) => b.classList.toggle("on", b.dataset.v === S.vegAdd.c)); if (["r", "+"].includes(S.vegAdd.c) && !S.vegAdd.s) { S.vegAdd.s = "1"; $$("#vaS button").forEach((b) => b.classList.toggle("on", b.dataset.v === "1")); } break;
-      case "vaS": S.vegAdd.s = S.vegAdd.s === d.v ? "" : d.v; $$("#vaS button").forEach((b) => b.classList.toggle("on", b.dataset.v === S.vegAdd.s)); break;
+      case "vaC": S.vegAdd.c = S.vegAdd.c === d.v ? "" : d.v; $$("#vaC button").forEach((b) => b.classList.toggle("on", b.dataset.v === S.vegAdd.c)); if (["r", "+"].includes(S.vegAdd.c) && !S.vegAdd.s) { S.vegAdd.s = "1"; $$("#vaS button").forEach((b) => b.classList.toggle("on", b.dataset.v === "1")); } bbCaption(); break;
+      case "vaS": S.vegAdd.s = S.vegAdd.s === d.v ? "" : d.v; $$("#vaS button").forEach((b) => b.classList.toggle("on", b.dataset.v === S.vegAdd.s)); bbCaption(); break;
       case "addSp": addSp(); break;
       case "editSp": editSp(+d.k); break;
       case "viewPh": viewPhoto(+d.k); break;
