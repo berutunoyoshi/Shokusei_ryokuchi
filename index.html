@@ -417,7 +417,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.9.2（2026-11-11）",   // 更新したら sw.js の VERSION も変える
+  version: "1.9.3（2026-11-11）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -529,8 +529,6 @@ window.APP_CONFIG = {
         { id: "spot", label: "地点名（調査地名を自動で入力）", type: "line" },
         { id: "side", label: "方形区の一辺", type: "number", unit: "m", max: 100, help: "方形区（正方形）の一辺の長さを入れます。面積は自動で計算します" },
         { id: "areaCalc", type: "calc", calc: "area" },
-        { id: "human", label: "人為的影響", type: "select", options: ["なし（自然状態）", "伐採・択伐", "皆伐跡", "草刈り・採草", "火入れ", "放牧・踏圧", "シカ食害", "植林", "耕作放棄", "造成・盛土", "その他"] },
-        { id: "years", label: "攪乱後の年数", type: "number", unit: "年", max: 1000, onlyIf: { human: ["伐採・択伐", "皆伐跡", "草刈り・採草", "火入れ", "植林", "耕作放棄", "造成・盛土", "その他"] } },
         { id: "note", label: "メモ", type: "text", voice: true },
       ],
       layers: [["T1", "高木層"], ["T2", "亜高木層"], ["S", "低木層"], ["H", "草本層"], ["M", "コケ層"]],
@@ -1988,8 +1986,8 @@ window.Store = (function () {
       ["調査地", r ? r.site : ""], ["地点名", r ? a.spot || r.site || "" : ""], ["樹林の種類", r ? a.forest : ""],
       ["生育状況", r ? a.growth : ""], ["緯度", r && r.lat != null ? +r.lat : ""], ["経度", r && r.lon != null ? +r.lon : ""],
       ["方形区の一辺(m)", side ?? ""], ["面積(m²)", side ? Math.round(side * side * 100) / 100 : ""], ["出現種数", r ? new Set((r.sp || []).map((s) => s.n)).size : ""],
-      ["人為的影響", r ? a.human : ""], ["攪乱後の年数", v("years")], ["", ""]];
-    const opt = { 樹林の種類: "forest", 生育状況: "growth", 人為的影響: "human" };
+    ];
+    const opt = { 樹林の種類: "forest", 生育状況: "growth" };
     let row = 2;
     pairs.forEach(([l, val], k) => {
       const rr = row + Math.floor(k / 3), cc = (k % 3) * 2;
@@ -2063,13 +2061,13 @@ window.Store = (function () {
   // 植生調査：調査区・出現種・素表・調査区ごとの調査票
   async function buildVeg(site) {
     const bk = XW.book(), plots = vegRecs().filter((r) => !site || r.site === site);
-    const PH = ["調査区番号", "調査地", "地点名", "樹林の種類", "生育状況", "調査状況", "調査日", "調査者", "緯度", "経度", "方形区の一辺(m)", "面積(m2)", "人為的影響", "攪乱後の年数",
+    const PH = ["調査区番号", "調査地", "地点名", "樹林の種類", "生育状況", "調査状況", "調査日", "調査者", "緯度", "経度", "方形区の一辺(m)", "面積(m2)",
       ...VEG.layers.flatMap(([, n]) => [`${n}_高さ(m)`, `${n}_植被率(%)`, `${n}_優占種`]), "出現種数", "被度・群度の未入力", "メモ", "写真ファイル"];
     const pc = bk.add("植生_調査区"); pc.row(0, PH, 1).width(PH.map((h) => Math.max(9, Math.min(18, h.length * 1.5)))); pc.heights[0] = 40; pc.freeze = [1, 1];
     plots.forEach((r, k) => { const a = r.ans, L = r.layers || {}, side = nv(a.side), miss = (r.sp || []).filter((s) => !s.c || !s.s).length;
-      pc.row(k + 1, [r.no, r.site || "", a.spot || r.site || "", a.forest || "", a.growth || "", ST_LABEL[statusOf(r)], r.date, r.by, r.lat ?? "", r.lon ?? "", side ?? "", side ? Math.round(side * side * 100) / 100 : "", a.human || "", num(a.years),
+      pc.row(k + 1, [r.no, r.site || "", a.spot || r.site || "", a.forest || "", a.growth || "", ST_LABEL[statusOf(r)], r.date, r.by, r.lat ?? "", r.lon ?? "", side ?? "", side ? Math.round(side * side * 100) / 100 : "",
         ...VEG.layers.flatMap(([l]) => [num((L[l] || {}).h), num((L[l] || {}).c), (L[l] || {}).d || ""]), new Set((r.sp || []).map((s) => s.n)).size, miss || "", a.note || "", photoList("veg", r)], 2);
-      if (miss) pc.set(k + 1, 15 + VEG.layers.length * 3, miss, 9); });
+      if (miss) pc.set(k + 1, 13 + VEG.layers.length * 3, miss, 9); });
     const ps = bk.add("植生_出現種").width([12, 10, 22, 7, 7]);
     ps.row(0, ["調査区番号", "階層", "種名", "被度", "群度"], 1); ps.freeze = [1, 0];
     let pr = 1; for (const r of plots) for (const s of r.sp || []) { ps.row(pr, [r.no, LAYER_JP[s.l], s.n, s.c || "", s.s || ""], 2); if (!s.c) ps.set(pr, 3, "", 9); if (!s.s) ps.set(pr, 4, "", 9); pr++; }
@@ -2415,7 +2413,7 @@ window.Store = (function () {
   async function tplVeg() {
     const bk = XW.book();
     vegSheet(bk, "植生調査票", null);
-    const optKeys = ["forest", "growth", "human"], op = bk.add("選択肢");
+    const optKeys = ["forest", "growth"], op = bk.add("選択肢");
     optKeys.forEach((k, j) => { const it = VEG.items.find((x) => x.id === k); op.set(0, j, it.label, 1); it.options.forEach((o, i) => op.set(i + 1, j, o, 2)); });
     op.width(optKeys.map(() => 16));
     const sn = bk.add("種名一覧").width([24]); sn.set(0, 0, "種名（入力候補）", 1); SPN.forEach((s, i) => sn.set(i + 1, 0, s, 0));
