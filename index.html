@@ -431,7 +431,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.11.0（2026-11-12）",   // 更新したら sw.js の VERSION も変える
+  version: "1.12.0（2026-11-12）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -452,6 +452,19 @@ window.APP_CONFIG = {
   // 調査地の候補（調査票の「選択肢」シート）と調査者の候補
   sites: ["埒浜防災緑地", "豊間防災緑地", "四倉防災緑地"],
   surveyors: ["藤原", "畑川", "藤原・畑川"],
+  // 植生調査の調査区（あらかじめ作成。位置は現地で「現在地を記録」）。no＝調査区番号
+  vegPlots: [
+    { no: "埒浜_針葉良好", site: "埒浜防災緑地", forest: "針葉樹", growth: "良好" },
+    { no: "埒浜_針葉不良", site: "埒浜防災緑地", forest: "針葉樹", growth: "不良" },
+    { no: "埒浜_広葉良好", site: "埒浜防災緑地", forest: "広葉樹", growth: "良好" },
+    { no: "埒浜_広葉不良", site: "埒浜防災緑地", forest: "広葉樹", growth: "不良" },
+    { no: "豊間_針葉良好", site: "豊間防災緑地", forest: "針葉樹", growth: "良好" },
+    { no: "豊間_針葉不良", site: "豊間防災緑地", forest: "針葉樹", growth: "不良" },
+    { no: "四倉_針葉良好", site: "四倉防災緑地", forest: "針葉樹", growth: "良好" },
+    { no: "四倉_針葉不良", site: "四倉防災緑地", forest: "針葉樹", growth: "不良" },
+    { no: "四倉_広葉良好", site: "四倉防災緑地", forest: "広葉樹", growth: "良好" },
+    { no: "四倉_広葉不良", site: "四倉防災緑地", forest: "広葉樹", growth: "不良" },
+  ],
   // 活力度＝各項目の評価値の合計÷評価項目数（小数1位に四捨五入）。上限値「未満」ならその判定（地上部調査票の M21・M22 と同じ）
   vitality: [[0.8, "良好"], [1.6, "やや不良"], [2.4, "不良"], [3.2, "著しく不良"], [Infinity, "枯死寸前"]],
 
@@ -720,7 +733,7 @@ window.Store = (function () {
   const treeKey = (site, tno) => `${site || ""}|${tno}`;
   const recId = { chijo: (key) => "c:" + key, gaikyo: (site) => "g:" + site };
   const treeRec = (i) => T[i] ? R.get(recId.chijo(T[i].key)) : null;
-  const statusOf = (r) => !r ? "none" : r.status === "done" ? "done" : "draft";
+  const statusOf = (r) => !r || !r.status || r.status === "todo" ? "none" : r.status === "done" ? "done" : "draft";
   const ST_LABEL = { none: "未調査", draft: "下書き", done: "完了" };
   const ST_COLOR = { none: "#8a968e", draft: "#ffffff", done: "#2e7d32" };
   const GROWTH_COLOR = { "良好": "#43a047", "不良": "#e53935" };
@@ -757,7 +770,16 @@ window.Store = (function () {
     for (const x of CFG.sites || []) s.add(x);
     return [...s].sort((a, b) => a.localeCompare(b, "ja", { numeric: true }));
   }
-  const vegRecs = () => [...R.values()].filter((r) => r.kind === "veg").sort((a, b) => String(a.no).localeCompare(String(b.no), "ja", { numeric: true }));
+  const vegRecs = () => [...R.values()].filter((r) => r.kind === "veg").sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || String(a.no).localeCompare(String(b.no), "ja", { numeric: true }));
+  // あらかじめ決まっている植生調査区を作る（id は固定なので、端末間の統合でも同じ調査区になる）
+  async function seedVegPlots() {
+    const gone = await Store.kv.get("vegPresetDeleted", []), now = new Date().toISOString();
+    for (const [k, p] of (CFG.vegPlots || []).entries()) {
+      const id = "v:preset:" + p.no; if (R.has(id) || gone.includes(id)) continue;
+      const rec = { id, kind: "veg", preset: true, order: k, no: p.no, site: p.site, status: "todo", ans: { spot: p.site, forest: p.forest, growth: p.growth }, layers: {}, sp: [], photos: [], date: "", by: "", lat: null, lon: null, created: now, updated: "" };
+      R.set(id, rec); await Store.recs.put(rec);
+    }
+  }
   const inSite = (site) => !S.site || site === S.site;
 
   // ---------- 外部ライブラリ ----------
@@ -798,7 +820,7 @@ window.Store = (function () {
     $$("#bmSeg button").forEach((b) => b.classList.toggle("on", b.dataset.bm === key));
   }
   function createMap() {
-    map = new maplibregl.Map({ container: "map", center: CFG.center, zoom: CFG.zoom, maxZoom: 20, minZoom: 4, attributionControl: { compact: true }, dragRotate: false, touchPitch: false, style: rasterStyle(baseKind) });
+    map = new maplibregl.Map({ container: "map", center: CFG.center, zoom: CFG.zoom, maxZoom: 23, minZoom: 4, attributionControl: { compact: true }, dragRotate: false, touchPitch: false, style: rasterStyle(baseKind) });
     map.touchZoomRotate.disableRotation();
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
@@ -825,9 +847,9 @@ window.Store = (function () {
   function addLayers() {
     map.addSource("trees", { type: "geojson", data: treesGeo(), buffer: 32, tolerance: 0 });
     map.addSource("plots", { type: "geojson", data: plotsGeo() });
-    map.addLayer({ id: "sel-glow", type: "circle", source: "trees", filter: ["==", ["get", "i"], -1], paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 10, 18, 26], "circle-color": "#ffeb3b", "circle-blur": .8 } });
-    map.addLayer({ id: "trees", type: "circle", source: "trees", filter: ["==", ["get", "m"], 1], paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3, 15, 5.5, 18, 9], "circle-color": fillExpr(), "circle-stroke-color": strokeExpr(), "circle-stroke-width": strokeWExpr() } });
-    map.addLayer({ id: "plots", type: "circle", source: "plots", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 5, 18, 12], "circle-color": ["match", ["get", "st"], "done", "#7e57c2", "#ffffff"], "circle-stroke-color": "#4a2b7a", "circle-stroke-width": 3, "circle-opacity": .9 } });
+    map.addLayer({ id: "sel-glow", type: "circle", source: "trees", filter: ["==", ["get", "i"], -1], paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 10, 18, 24, 23, 30], "circle-color": "#ffeb3b", "circle-blur": .8 } });
+    map.addLayer({ id: "trees", type: "circle", source: "trees", filter: ["==", ["get", "m"], 1], paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3, 15, 5.5, 18, 8, 23, 12], "circle-color": fillExpr(), "circle-stroke-color": strokeExpr(), "circle-stroke-width": strokeWExpr() } });
+    map.addLayer({ id: "plots", type: "circle", source: "plots", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 5, 18, 12, 23, 16], "circle-color": ["match", ["get", "st"], "done", "#7e57c2", "#ffffff"], "circle-stroke-color": "#4a2b7a", "circle-stroke-width": 3, "circle-opacity": .9 } });
     map.addLayer({ id: "plot-sel", type: "circle", source: "plots", filter: ["==", ["get", "id"], ""], paint: { "circle-radius": 18, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": "#ffeb3b", "circle-stroke-width": 3 } });
     for (const l of ["trees", "plots"]) { map.on("mouseenter", l, () => { map.getCanvas().style.cursor = "pointer"; }); map.on("mouseleave", l, () => { map.getCanvas().style.cursor = ""; }); }
     map.on("click", onMapClick);
@@ -876,7 +898,7 @@ window.Store = (function () {
     if (!LB.el) { LB.el = document.createElement("div"); LB.el.className = "treelabels"; map.getContainer().appendChild(LB.el); }
     const z = map.getZoom(), el = LB.el;
     if (S.labels === "off" || z < 16 || document.body.classList.contains("adding")) { el.innerHTML = ""; return; }
-    const fs = Math.max(10, Math.min(14, 10 + (z - 16) * 1.6)), W = el.clientWidth, H = el.clientHeight, c = map.getCenter(), b = map.getBounds(), cand = [];
+    const fs = Math.max(10, Math.min(15, 10 + (z - 16) * 1.4)), W = el.clientWidth, H = el.clientHeight, c = map.getCenter(), b = map.getBounds(), cand = [];
     const inB = (lon, lat) => lon >= b.getWest() && lon <= b.getEast() && lat >= b.getSouth() && lat <= b.getNorth();
     for (const r of vegRecs()) if (r.lat != null && inSite(r.site) && inB(r.lon, r.lat)) cand.push({ lon: r.lon, lat: r.lat, txt: `植生 ${r.no}`, cls: "plot", pri: 1 });
     for (let i = 0; i < T.length; i++) { if (!mask[i]) continue; const t = T[i]; if (!inB(t.lon, t.lat)) continue; cand.push({ lon: t.lon, lat: t.lat, txt: `${t.tno}_${t.sp || "樹種不明"}`, cls: S.sel && S.sel.kind === "tree" && S.sel.i === i ? "sel" : "", pri: S.sel && S.sel.i === i ? 2 : 0 }); if (cand.length > 2000) break; }
@@ -1058,7 +1080,8 @@ window.Store = (function () {
   async function saveCur(now) {
     const c = S.cur; if (!c) return;
     const r = c.rec; r.updated = new Date().toISOString(); r.device = S.device;
-    if (!r.status) r.status = "draft";
+    if (!r.status || r.status === "todo") r.status = "draft";
+    if (!r.date) r.date = today(); if (!r.by) r.by = S.name;
     if (!r.created) r.created = r.updated;
     R.set(r.id, r); c.saved = true; S.dirty = false;
     await Store.recs.put(JSON.parse(JSON.stringify(r)));
@@ -1109,6 +1132,16 @@ window.Store = (function () {
       else if (el.dataset.layer) { const [l, k] = el.dataset.layer.split("."); c.rec.layers = c.rec.layers || {}; (c.rec.layers[l] = c.rec.layers[l] || {})[k] = el.value; S.dirty = true; saveSoon(); }
     });
     body.addEventListener("change", (e) => { if (e.target.id === "phIn") addPhotos(e.target.files); });
+    // Enter で次の入力欄へ（文章欄と、種名の入力欄は除く）
+    body.addEventListener("focusin", (e) => { const el = e.target; if (el.matches("input.inp") && !el.id) el.setAttribute("enterkeyhint", "next"); });
+    body.addEventListener("keydown", (e) => {
+      const el = e.target; if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+      if (!el.matches("input, select") || el.id === "vaN" || el.type === "file") return;
+      e.preventDefault();
+      const all = $$("input.inp, select.inp, textarea.inp", body).filter((x) => x.offsetParent !== null && !x.disabled && x.type !== "file" && x.type !== "date" && x.id !== "vaN");
+      const nx = all[all.indexOf(el) + 1];
+      if (nx) { nx.focus(); if (nx.select && nx.tagName === "INPUT") nx.select(); nx.scrollIntoView({ block: "center", behavior: "smooth" }); } else el.blur();
+    });
   }
 
   // ---------- 音声入力 ----------
@@ -1204,6 +1237,7 @@ window.Store = (function () {
     if (!(await dialog({ title: "この調査記録を削除しますか？", body: "<p>入力内容と写真が削除されます。元に戻せません。</p>", ok: "削除する", danger: true }))) return;
     for (const p of c.rec.photos || []) await Store.photos.remove(p.id);
     await Store.recs.remove(c.rec.id); R.delete(c.rec.id);
+    if (c.rec.preset) { const g = await Store.kv.get("vegPresetDeleted", []); if (!g.includes(c.rec.id)) { g.push(c.rec.id); await Store.kv.put("vegPresetDeleted", g); } }
     toast("削除しました"); applyFilter();
     if (c.kind === "chijo") showChijoList(); else if (c.kind === "gaikyo") showGaikyoList(); else showVegList();
   }
@@ -2713,7 +2747,7 @@ window.Store = (function () {
       const w = await dialog({ title: "この端末のデータをすべて削除", body: `<p>調査記録・写真・樹木データをこの端末から削除します。<b>元に戻せません。</b>先にZIPで出力してください。</p><p>削除する場合は「削除」と入力してください。</p>`, input: { placeholder: "削除" }, ok: "削除する", danger: true });
       if (w !== "削除") { if (w != null) toast("入力が違うため削除しませんでした"); return; }
       await Store.recs.clear(); await Store.photos.clear(); for (const k of ["ledger", "localtrees", "fixes", "deleted"]) await Store.kv.put(k, k === "fixes" || k === "deleted" ? {} : k === "localtrees" ? [] : null);
-      ls.set("sites", []); ls.set("lastBackup", null); await loadRecs(); await loadTrees(); fillSiteLists(); applyFilter(); renderMenu(); toast("削除しました");
+      ls.set("sites", []); ls.set("lastBackup", null); await Store.kv.put("vegPresetDeleted", []); await loadRecs(); await seedVegPlots(); await loadTrees(); fillSiteLists(); applyFilter(); renderMenu(); toast("削除しました");
     },
   };
   MENU_ACT.importTreesBtn = MENU_ACT.importTrees;
@@ -2804,7 +2838,7 @@ window.Store = (function () {
     try {
       await ensureMapLib();
       const ready = createMap();
-      await loadRecs(); await loadTrees(); S.device = await ensureDevice();
+      await loadRecs(); await seedVegPlots(); await loadTrees(); S.device = await ensureDevice();
       fillSiteLists();
       await ready;
       addLayers(); initUI(); initSW();
