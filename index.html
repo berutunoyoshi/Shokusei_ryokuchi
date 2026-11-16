@@ -433,7 +433,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.12.1（2026-11-12）",   // 更新したら sw.js の VERSION も変える
+  version: "1.13.0（2026-11-12）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -443,6 +443,8 @@ window.APP_CONFIG = {
   basemap: "photo",                  // pale（淡色）／std（標準）／photo（航空写真）／osm
   offline: { maxTiles: 6000, minZoom: 10 },
   maxPhotos: 12,
+  excelPhotoPx: 640,                 // 地上部調査票に貼る写真の大きさ（長い辺の画素数）。元の写真はZIPに入ります
+  zipMaxPhotos: 200,                 // ZIP1つに入れる写真の枚数（多いときは分けて出力）
   // スケッチ（断面図）：アイコンの標準の高さ（m）と、方眼の初期の範囲（m）
   sketch: { sizes: { tree: { L: 12, M: 6, S: 2.5 }, herb: { L: 1.5, M: 0.8, S: 0.4 }, vine: { L: 6, M: 4, S: 2 } }, widthM: 20, heightM: 15 },
   photoMaxPx: 1600,
@@ -610,6 +612,7 @@ window.Store = (function () {
     return {
       async all() { const db = await open(); return db ? tx(db, name, "readonly", (s) => s.getAll()) : [...m().values()]; },
       async get(id) { const db = await open(); return db ? tx(db, name, "readonly", (s) => s.get(id)) : m().get(id); },
+      async keys() { const db = await open(); return db ? tx(db, name, "readonly", (s) => s.getAllKeys()) : [...m().keys()]; },
       async put(x) { const db = await open(); if (!db) { m().set(x.id, x); return x; } await tx(db, name, "readwrite", (s) => s.put(x)); return x; },
       async remove(id) { const db = await open(); if (!db) { m().delete(id); return; } await tx(db, name, "readwrite", (s) => s.delete(id)); },
       async clear() { const db = await open(); if (!db) { m().clear(); return; } await tx(db, name, "readwrite", (s) => s.clear()); },
@@ -1192,7 +1195,7 @@ window.Store = (function () {
     const deleted = await Store.kv.get("deleted", {}), fixes = await Store.kv.get("fixes", {}), at = new Date().toISOString();
     for (const t of ts) { if (t.src === "base") deleted[t.key] = { at, by: S.name }; delete fixes[t.key]; }
     await Store.kv.put("deleted", deleted); await Store.kv.put("fixes", fixes);
-    for (const r of recs) { for (const p of r.photos || []) { await Store.photos.remove(p.id); PH_URL.delete(p.id); } await Store.recs.remove(r.id); R.delete(r.id); }
+    for (const r of recs) { for (const p of r.photos || []) { await Store.photos.remove(p.id); dropURL(p.id); } await Store.recs.remove(r.id); R.delete(r.id); }
     S.sel = null; await loadTrees(); fillSiteLists(); applyFilter();
     toast(`${ts.length}本を削除しました`); return true;
   }
@@ -1537,10 +1540,41 @@ window.Store = (function () {
   // =====================================================================
   // 写真（端末内に縮小して保存）
   // =====================================================================
+  // ---------- 写真の保存形式：画像データ（ArrayBuffer）のまま保存（文字に変換しないので容量・メモリが少ない） ----------
   const PH_URL = new Map();
+  function dataURLtoBuf(u) { const [h, b] = String(u).split(","), bin = atob(b), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return { buf: a.buffer, type: (h.match(/data:([^;]+)/) || [])[1] || "image/jpeg" }; }
+  // 写真の画像データを取り出す（古い形式＝文字のデータなら、この時点で変換して保存し直す）
+  async function photoBuf(id) {
+    const p = await Store.photos.get(id); if (!p) return null;
+    if (p.buf) return { buf: p.buf, type: p.type || "image/jpeg" };
+    if (p.data) { const x = dataURLtoBuf(p.data); await Store.photos.put({ id: p.id, rid: p.rid, buf: x.buf, type: x.type, at: p.at }); return x; }
+    return null;
+  }
   async function photoURL(id) {
     if (PH_URL.has(id)) return PH_URL.get(id);
-    const p = await Store.photos.get(id); const u = p ? p.data : ""; if (u) PH_URL.set(id, u); return u;
+    const x = await photoBuf(id); if (!x) return "";
+    const u = URL.createObjectURL(new Blob([x.buf], { type: x.type })); PH_URL.set(id, u); return u;
+  }
+  function dropURL(id) { const u = PH_URL.get(id); if (u && u.startsWith("blob:")) URL.revokeObjectURL(u); PH_URL.delete(id); }
+  async function putPhoto(id, rid, blob, at) { const buf = await blob.arrayBuffer(); await Store.photos.put({ id, rid, buf, type: blob.type || "image/jpeg", at }); dropURL(id); }
+  // 端末内の古い形式の写真を、1枚ずつ新しい形式に変換（起動時に裏で実行）
+  async function migratePhotos() {
+    let n = 0;
+    for (const id of await Store.photos.keys()) { const p = await Store.photos.get(id); if (p && p.data && !p.buf) { const x = dataURLtoBuf(p.data); await Store.photos.put({ id: p.id, rid: p.rid, buf: x.buf, type: x.type, at: p.at }); n++; } }
+    if (n) console.info(`写真 ${n}枚を新しい保存形式に変換しました`);
+  }
+  // 画像を縮小（max：長い辺の画素数）。Blob を返す
+  function shrinkBlob(src, max, q = 0.82) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(src), img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
+        const cv = document.createElement("canvas"); cv.width = w; cv.height = h; cv.getContext("2d").drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url); cv.toBlob((b) => b ? res({ blob: b, w, h }) : rej(new Error("画像を変換できませんでした")), "image/jpeg", q);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("画像を読み込めませんでした")); };
+      img.src = url;
+    });
   }
   async function renderPhotos() {
     const host = $("#phHost"), c = S.cur; if (!host || !c) return;
@@ -1550,18 +1584,6 @@ window.Store = (function () {
       <p class="help">写真・スケッチ ${ph.length}/${CFG.maxPhotos}枚。タップすると説明の入力・削除${ph.some((p) => p.sketch) ? "、スケッチは編集" : ""}ができます。</p>`;
     for (const img of $$("img[data-ph]", host)) img.src = await photoURL(img.dataset.ph);
   }
-  function shrinkImage(file, max) {
-    return new Promise((res, rej) => {
-      const url = URL.createObjectURL(file), img = new Image();
-      img.onload = () => {
-        const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
-        const cv = document.createElement("canvas"); cv.width = w; cv.height = h; cv.getContext("2d").drawImage(img, 0, 0, w, h);
-        URL.revokeObjectURL(url); res(cv.toDataURL("image/jpeg", 0.82));
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("画像を読み込めませんでした")); };
-      img.src = url;
-    });
-  }
   async function addPhotos(files) {
     const c = S.cur; if (!c || !files || !files.length) return;
     const caps = (SV[c.kind] || {}).photoCaps || [];
@@ -1570,9 +1592,9 @@ window.Store = (function () {
     for (const f of [...files]) {
       if (c.rec.photos.length >= CFG.maxPhotos) { toast(`写真は${CFG.maxPhotos}枚までです`); break; }
       try {
-        const data = await shrinkImage(f, CFG.photoMaxPx), id = "p:" + uid(), at = new Date().toISOString();
+        const { blob } = await shrinkBlob(f, CFG.photoMaxPx), id = "p:" + uid(), at = new Date().toISOString();
         const used = new Set(c.rec.photos.map((p) => p.cap)), cap = caps.find((x) => !used.has(x)) || "";
-        await Store.photos.put({ id, rid: c.rec.id, data, at }); PH_URL.set(id, data);
+        await putPhoto(id, c.rec.id, blob, at);
         c.rec.photos.push({ id, cap, at }); n++;
       } catch (e) { toast(e.message); }
     }
@@ -1589,7 +1611,7 @@ window.Store = (function () {
       const b = e.target.closest("[data-v]"); if (!b) return;
       if (b.dataset.v === "del") {
         if (!(await dialog({ title: "この写真を削除しますか？", ok: "削除する", danger: true }))) return;
-        c.rec.photos.splice(k, 1); await Store.photos.remove(p.id); PH_URL.delete(p.id);
+        c.rec.photos.splice(k, 1); await Store.photos.remove(p.id); dropURL(p.id);
       } else if (b.dataset.v === "edit") { p.cap = $("#vCap", d).value.trim(); d.remove(); openSketch(k); return; }
       else p.cap = $("#vCap", d).value.trim();
       d.remove(); await saveCur("quiet"); renderPhotos();
@@ -1913,11 +1935,11 @@ window.Store = (function () {
         }
         case "save": {
           st.sel = -1; renderSketch(ctx, d, -1);
-          const data = cv.toDataURL("image/jpeg", 0.9), cap = $("#skTitle", wrap).value.trim() || "スケッチ", at = new Date().toISOString();
-          if (meta) { meta.cap = cap; meta.sketch = d; meta.at = at; await Store.photos.put({ id: meta.id, rid: c.rec.id, data, at }); PH_URL.set(meta.id, data); }
+          const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.9)), cap = $("#skTitle", wrap).value.trim() || "スケッチ", at = new Date().toISOString();
+          if (meta) { meta.cap = cap; meta.sketch = d; meta.at = at; await putPhoto(meta.id, c.rec.id, blob, at); }
           else {
             if ((c.rec.photos || []).length >= CFG.maxPhotos) { toast(`写真・スケッチは合わせて${CFG.maxPhotos}枚までです`); return; }
-            const id = "p:" + uid(); await Store.photos.put({ id, rid: c.rec.id, data, at }); PH_URL.set(id, data);
+            const id = "p:" + uid(); await putPhoto(id, c.rec.id, blob, at);
             (c.rec.photos = c.rec.photos || []).push({ id, cap, at, sketch: d });
           }
           await saveCur(); renderPhotos(); wrap.remove(); toast("スケッチを保存しました"); break;
@@ -2253,7 +2275,7 @@ window.Store = (function () {
             const { xml, imgs } = drawingXml(doc, s.pics, () => ++nImg);
             z.file(dPath, xml); addCT(dPath, "application/vnd.openxmlformats-officedocument.drawing+xml");
             z.file(dPath.replace(/([^/]+)$/, "_rels/$1.rels"), `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${NS_PR}">${imgs.map((m, j) => `<Relationship Id="rIdImg${j + 1}" Type="${NS_R}/image" Target="../media/${m.name}"/>`).join("")}</Relationships>`);
-            for (const m of imgs) z.file("xl/media/" + m.name, m.b64, { base64: true });
+            for (const m of imgs) z.file("xl/media/" + m.name, m.data, { binary: true });
           } else if (!s.orig) z.remove(path.replace(/([^/]+)$/, "_rels/$1.rels"));
           let out = xmlStr(doc); if (!s.orig) out = out.replace(/\sxr:uid="[^"]*"/g, "");
           z.file(path, out); addCT(path, "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml");
@@ -2294,7 +2316,7 @@ window.Store = (function () {
       const [c0, r0, c1, r1] = p.box; let bw = 0, bh = 0; for (let k = c0; k <= c1; k++) bw += cpx(k); for (let k = r0; k <= r1; k++) bh += rpx(k);
       const s = Math.min((bw - 8) / p.w, (bh - 8) / p.h), w = Math.round(p.w * s), h = Math.round(p.h * s);
       const [fc, fco] = at(c0, Math.round((bw - w) / 2), cpx), [fr, fro] = at(r0, Math.round((bh - h) / 2), rpx);
-      const name = `image${nextImg()}.jpeg`; imgs.push({ name, b64: p.b64 });
+      const name = `image${nextImg()}.jpeg`; imgs.push({ name, data: p.data });
       anchors += `<xdr:oneCellAnchor><xdr:from><xdr:col>${fc}</xdr:col><xdr:colOff>${fco}</xdr:colOff><xdr:row>${fr}</xdr:row><xdr:rowOff>${fro}</xdr:rowOff></xdr:from><xdr:ext cx="${w * E}" cy="${h * E}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${j + 2}" name="写真${j + 1}" descr="${String(p.cap || "").replace(/[&<>"]/g, "")}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rIdImg${j + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${w * E}" cy="${h * E}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`;
     });
     return { imgs, xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${NS_R}">${anchors}</xdr:wsDr>` };
@@ -2363,7 +2385,7 @@ window.Store = (function () {
         bk.cached(d, C.calc.gSum, m.g && m.g.multi ? m.g.val : "－"); bk.cached(d, C.calc.dSum, m.d && m.d.multi ? m.d.val : "－");
         bk.cached(d, C.calc.wAvg, m.w); bk.cached(d, C.calc.vit, m.vit ? m.vit.avg : null); bk.cached(d, C.calc.judge, m.vit ? m.vit.cls : null);
         const ph = [];
-        for (const p of (r.photos || []).slice(0, C.photoBoxes.length)) { const x = await Store.photos.get(p.id); if (!x) continue; const [w, h] = await imgSize(x.data); ph.push({ b64: x.data.split(",")[1], w, h, cap: p.cap, box: C.photoBoxes[ph.length] }); }
+        for (const p of (r.photos || []).slice(0, C.photoBoxes.length)) { const x = await photoBuf(p.id); if (!x) continue; let t; try { t = await shrinkBlob(new Blob([x.buf], { type: x.type }), CFG.excelPhotoPx || 640, 0.78); } catch { continue; } const w = t.w, h = t.h; ph.push({ data: t.blob, w, h, cap: p.cap, box: C.photoBoxes[ph.length] }); }
         await bk.pics(sh, ph);
       } else {
         // 記入用：様式の記入例（調査箇所など）は消してある
@@ -2398,14 +2420,13 @@ window.Store = (function () {
     if (withData) { const add = (n) => bk.addXW(n); sheetGaikyoList(add, site); sheetSpacing(add, site); }
     return bk.blob();
   }
-  async function photoEntries(site) {
+  // 出力する写真の一覧（ファイル名と写真のIDだけ。画像データは出力するときに1枚ずつ読む）
+  function photoEntries(site) {
     const out = [];
-    for (const r of R.values()) {
-      if (site && r.site !== site) continue;
-      for (const [k, p] of (r.photos || []).entries()) { const d = await Store.photos.get(p.id); if (d) out.push({ path: photoFile(r.kind, r, p, k), id: p.id, data: d.data }); }
-    }
+    for (const r of R.values()) { if (site && r.site !== site) continue; for (const [k, p] of (r.photos || []).entries()) out.push({ path: photoFile(r.kind, r, p, k), id: p.id }); }
     return out;
   }
+
   // ファイルの保存：ダウンロード。共有に対応した端末では「共有」も選べる
   async function saveBlob(blob, name) {
     const file = new File([blob], name, { type: blob.type });
@@ -2444,25 +2465,7 @@ window.Store = (function () {
     return { app: CFG.storageKey, version: CFG.version, exported: new Date().toISOString(), by: S.name, device: S.device, site: site || "",
       recs: [...R.values()].filter((r) => !site || r.site === site).map((r) => ({ ...r, photos: (r.photos || []).map((p, k) => ({ ...p, file: photoFile(r.kind, r, p, k) })) })) };
   }
-  async function exportZip() {
-    const site = await chooseScope("写真・バックアップを含めてZIPで出力"); if (site == null) return;
-    const blob = await busy("ZIPを作成しています…（写真が多いと時間がかかります）", async () => {
-      await loadZip();
-      const z = new JSZip(), base = `${CFG.filePrefix}_${site ? fname(site) + "_" : ""}${stamp()}`;
-      const has = (k) => k === "chijo" ? scopeTrees(site).some((t) => R.get(recId.chijo(t.key))) : siteList().some((s) => (!site || s === site) && R.get(recId.gaikyo(s)));
-      if (has("gaikyo")) z.file(`概況調査_結果_${stamp()}.xlsx`, await buildGaikyoBook(site, true));
-      if (has("chijo")) z.file(`地上部調査_結果_${stamp()}.xlsx`, await buildChijoBook(site, true));
-      if (vegRecs().some((r) => !site || r.site === site)) z.file(`植生調査_結果_${stamp()}.xlsx`, await buildVeg(site));
-      for (const p of await photoEntries(site)) z.file(p.path, p.data.split(",")[1], { base64: true });
-      const bj = backupJSON(site);
-      bj.trees = { ledger: await Store.kv.get("ledger"), local: await Store.kv.get("localtrees", []), fixes: await Store.kv.get("fixes", {}), deleted: await Store.kv.get("deleted", {}), sites: ls.get("sites", []) };
-      z.file("バックアップ/backup.json", JSON.stringify(bj));
-      z.file("はじめにお読みください.txt", `${CFG.appTitle} 出力データ\r\n\r\n・概況調査_結果：様式「概況調査票」に調査地ごとに記入（樹木間隔の表つき）。概況調査一覧・樹木間隔のシートつき\r\n・地上部調査_結果：様式「地上部調査票」に1本1シートで記入（写真6枚まで貼付）。集計表・地上部調査一覧・樹木データのシートつき\r\n・植生調査_結果：調査区・出現種・素表・調査区ごとの調査票（被度・群度の未入力は赤）\r\n・写真フォルダ：すべての写真・スケッチ（ファイル名は各一覧の「写真ファイル」列と対応）\r\n・バックアップ/backup.json：アプリに読み込み直すためのデータ（「出力・設定 → バックアップを読み込む」でこのZIPを選びます）\r\n`);
-      ls.set("lastBackup", new Date().toISOString());
-      return { blob: await z.generateAsync({ type: "blob", compression: "STORE" }), name: base + ".zip" };
-    });
-    if (blob) { await saveBlob(blob.blob, blob.name); renderMenu(); }
-  }
+
 
   // =====================================================================
   // 様式（空欄の記入用Excel）
@@ -2569,31 +2572,85 @@ window.Store = (function () {
   // =====================================================================
   // バックアップの読み込み（他の端末のデータを統合）
   // =====================================================================
-  async function importBackup(file) {
-    let bj, z = null;
+  // ---------- ZIP出力：写真が多いときは分けて出力（メモリを使いすぎないように） ----------
+  const zipMax = () => CFG.zipMaxPhotos || 200;
+  async function exportZip() {
+    const site = await chooseScope("写真・バックアップを含めてZIPで出力"); if (site == null) return;
+    const all = photoEntries(site), done = new Set(await Store.kv.get("exportedPhotos", [])), fresh = all.filter((p) => !done.has(p.id));
+    let list = all;
+    if (all.length && fresh.length < all.length) {
+      const v = await formDialog({ title: "出力する写真", body: `<p class="small muted">写真・スケッチ ${all.length}枚のうち、${all.length - fresh.length}枚は前に出力済みです。</p>`,
+        fields: [{ id: "w", label: "写真", value: fresh.length ? "まだ出力していない写真だけ" : "すべての写真", options: ["まだ出力していない写真だけ", "すべての写真"] }], ok: "次へ" });
+      if (!v) return;
+      if (v.w !== "すべての写真") list = fresh;
+    }
+    const chunks = []; for (let i = 0; i < list.length; i += zipMax()) chunks.push(list.slice(i, i + zipMax()));
+    if (!chunks.length) chunks.push([]);
+    const N = chunks.length, base = `${CFG.filePrefix}_${site ? fname(site) + "_" : ""}${stamp()}`;
+    if (N > 1 && !(await dialog({ title: `ZIPを ${N}つに分けて出力します`, body: `<p>写真が ${list.length}枚あるため、${zipMax()}枚ずつ ${N}つのZIPに分けます。1つ目にExcel・バックアップが入ります。1つずつ保存してください。</p><p class="small muted">バックアップを読み込むときは、${N}つのZIPをまとめて選びます。</p>`, ok: "出力を始める" }))) return;
+    for (let k = 0; k < N; k++) {
+      const part = N > 1 ? `_${k + 1}of${N}` : "";
+      const out = await busy(`ZIPを作成しています…${N > 1 ? `（${k + 1}/${N}）` : ""}`, async () => {
+        await loadZip();
+        const z = new JSZip();
+        if (k === 0) {
+          const has = (kk) => kk === "chijo" ? scopeTrees(site).some((t) => R.get(recId.chijo(t.key))) : siteList().some((s) => (!site || s === site) && R.get(recId.gaikyo(s)));
+          if (has("gaikyo")) z.file(`概況調査_結果_${stamp()}.xlsx`, await buildGaikyoBook(site, true));
+          if (has("chijo")) z.file(`地上部調査_結果_${stamp()}.xlsx`, await buildChijoBook(site, true));
+          if (vegRecs().some((r) => !site || r.site === site)) z.file(`植生調査_結果_${stamp()}.xlsx`, await buildVeg(site));
+          const bj = backupJSON(site);
+          bj.trees = { ledger: await Store.kv.get("ledger"), local: await Store.kv.get("localtrees", []), fixes: await Store.kv.get("fixes", {}), deleted: await Store.kv.get("deleted", {}), sites: ls.get("sites", []) };
+          bj.parts = N; bj.photosInThis = list.length;
+          z.file("バックアップ/backup.json", JSON.stringify(bj));
+          z.file("はじめにお読みください.txt", `${CFG.appTitle} 出力データ${N > 1 ? `（${N}分割の1つ目）` : ""}\r\n\r\n・概況調査_結果：様式「概況調査票」に調査地ごとに記入（樹木間隔の表つき）。概況調査一覧・樹木間隔のシートつき\r\n・地上部調査_結果：様式「地上部調査票」に1本1シートで記入（写真6枚まで縮小して貼付）。集計表・地上部調査一覧・樹木データのシートつき\r\n・植生調査_結果：調査区・出現種・素表・調査区ごとの調査票（被度・群度の未入力は赤）\r\n・写真フォルダ：写真・スケッチ（元のサイズ。ファイル名は各一覧の「写真ファイル」列と対応）${N > 1 ? `。写真は ${N}つのZIPに分かれています` : ""}${list.length < all.length ? "。前に出力済みの写真は入っていません" : ""}\r\n・バックアップ/backup.json：アプリに読み込み直すためのデータ（「出力・設定 → バックアップを読み込む」でZIPを選びます${N > 1 ? `。${N}つのZIPをまとめて選んでください` : ""}）\r\n`);
+        }
+        for (const p of chunks[k]) { const x = await photoBuf(p.id); if (x) z.file(p.path, x.buf, { binary: true }); }
+        return { blob: await z.generateAsync({ type: "blob", compression: "STORE" }), name: base + part + ".zip" };
+      });
+      if (!out) return;
+      await saveBlob(out.blob, out.name);
+      const ex = new Set(await Store.kv.get("exportedPhotos", [])); chunks[k].forEach((p) => ex.add(p.id)); await Store.kv.put("exportedPhotos", [...ex]);
+      if (k === 0) ls.set("lastBackup", new Date().toISOString());
+      if (k + 1 < N && !(await dialog({ title: `${k + 1}/${N} を出力しました`, body: `<p>続けて ${k + 2}/${N} を作成します。</p>`, ok: "続ける", cancel: "ここでやめる" }))) break;
+    }
+    renderMenu();
+  }
+  async function importBackup(files) {
+    files = [...(files.length != null ? files : [files])];
+    let bj = null; const zips = [];
     try {
-      if (/\.json$/i.test(file.name)) bj = JSON.parse(await file.text());
-      else { await loadZip(); z = await JSZip.loadAsync(file); const f = z.file("バックアップ/backup.json") || z.file(/backup\.json$/)[0]; if (!f) throw new Error(); bj = JSON.parse(await f.async("string")); }
-    } catch { toast("バックアップ（backup.json）が見つかりません。このアプリで出力したZIPを選んでください", 5000); return; }
-    if (!bj || !Array.isArray(bj.recs)) { toast("バックアップの形式が違います", 4000); return; }
-    let add = 0, upd = 0, keep = 0;
+      await loadZip();
+      for (const file of files) {
+        if (/\.json$/i.test(file.name)) { bj = bj || JSON.parse(await file.text()); continue; }
+        const z = await JSZip.loadAsync(file); zips.push(z);
+        const f = z.file("バックアップ/backup.json") || z.file(/backup\.json$/)[0]; if (f && !bj) bj = JSON.parse(await f.async("string"));
+      }
+      if (!bj) throw new Error();
+    } catch { toast("バックアップ（backup.json）が見つかりません。このアプリで出力したZIP（分割した場合は1つ目を含めて）を選んでください", 6000); return; }
+    if (!Array.isArray(bj.recs)) { toast("バックアップの形式が違います", 4000); return; }
+    const findFile = (path) => { for (const z of zips) { const f = z.file(path); if (f) return f; } return null; };
+    let add = 0, upd = 0, keep = 0, miss = 0;
     for (const r of bj.recs) { const cur = R.get(r.id); if (!cur) add++; else if ((r.updated || "") > (cur.updated || "")) upd++; else keep++; }
+    for (const r of bj.recs) for (const p of r.photos || []) if (!p.data && !(p.file && findFile(p.file)) && !(await Store.photos.get(p.id))) miss++;
     const tr = bj.trees || {}, hasLedger = tr.ledger && (tr.ledger.trees || []).length;
-    const go = await dialog({ title: "バックアップを読み込む", body: `<p>${esc(bj.by || "")}（${esc(bj.exported ? new Date(bj.exported).toLocaleString("ja-JP") : "")}）のデータ</p>
+    const go = await dialog({ title: "バックアップを読み込む", body: `<p>${esc(bj.by || "")}（${esc(bj.exported ? new Date(bj.exported).toLocaleString("ja-JP") : "")}）のデータ${zips.length > 1 ? `（ZIP ${zips.length}つ）` : ""}</p>
       <ul><li>新しい記録：<b>${add}件</b></li><li>この端末より新しい記録：<b>${upd}件</b>（置き換えます）</li><li>この端末の方が新しい・同じ記録：${keep}件（そのまま）</li>
       ${hasLedger ? `<li>樹木データ：${(tr.ledger.trees || []).length}本${(await Store.kv.get("ledger")) ? "（この端末にもあるため、そのまま）" : "（この端末に読み込みます）"}</li>` : ""}
-      ${(tr.local || []).length ? `<li>現地で追加した樹木：${tr.local.length}本（同じ番号がないものを追加）</li>` : ""}</ul>`, ok: "統合する" });
+      ${(tr.local || []).length ? `<li>現地で追加した樹木：${tr.local.length}本（同じ番号がないものを追加）</li>` : ""}
+      ${miss ? `<li style="color:var(--danger)">見つからない写真：${miss}枚（分割したZIPの残り、または前に出力したZIPに入っています。あとからそのZIPを読み込めば補えます）</li>` : ""}</ul>`, ok: "統合する" });
     if (!go) return;
+    let got = 0;
     await busy("読み込んでいます…", async () => {
       for (const r of bj.recs) {
-        const cur = R.get(r.id); if (cur && (r.updated || "") <= (cur.updated || "")) continue;
-        const photos = [];
+        const cur = R.get(r.id), newer = !cur || (r.updated || "") > (cur.updated || "");
+        // 写真：この端末に無いものは、ZIPから取り込む（記録が古くても写真だけは補う）
         for (const p of r.photos || []) {
-          let data = null;
-          if (p.data) data = p.data; else if (z && p.file) { const f = z.file(p.file); if (f) data = "data:image/jpeg;base64," + (await f.async("base64")); }
-          if (data) await Store.photos.put({ id: p.id, rid: r.id, data, at: p.at });
-          photos.push({ id: p.id, cap: p.cap, at: p.at });
+          if (await Store.photos.get(p.id)) continue;
+          if (p.data) { const x = dataURLtoBuf(p.data); await Store.photos.put({ id: p.id, rid: r.id, buf: x.buf, type: x.type, at: p.at }); got++; }
+          else if (p.file) { const f = findFile(p.file); if (f) { await Store.photos.put({ id: p.id, rid: r.id, buf: await f.async("arraybuffer"), type: "image/jpeg", at: p.at }); got++; } }
         }
+        if (!newer) continue;
+        const photos = (r.photos || []).map(({ file, data, ...m }) => m);
         const rec = { ...r, photos }; await Store.recs.put(rec); R.set(rec.id, rec);
       }
       if (hasLedger && !(await Store.kv.get("ledger"))) await Store.kv.put("ledger", tr.ledger);
@@ -2603,7 +2660,7 @@ window.Store = (function () {
       if (tr.sites) { const a = new Set(ls.get("sites", [])); tr.sites.forEach((s) => a.add(s)); ls.set("sites", [...a]); }
       await loadTrees(); fillSiteLists(); applyFilter();
     });
-    toast(`統合しました（新規 ${add}件・更新 ${upd}件）`, 4000); renderMenuIfOpen();
+    toast(`統合しました（新規 ${add}件・更新 ${upd}件・写真 ${got}枚）`, 4500); renderMenuIfOpen();
   }
 
   // =====================================================================
@@ -2691,7 +2748,7 @@ window.Store = (function () {
   async function renderMenu() {
     S.cur = null;
     const led = await Store.kv.get("ledger"), local = await Store.kv.get("localtrees", []), fixes = await Store.kv.get("fixes", {});
-    const nRec = R.size, lb = ls.get("lastBackup", null);
+    const nRec = R.size, lb = ls.get("lastBackup", null), exd = new Set(await Store.kv.get("exportedPhotos", [])), nNew = photoEntries("").filter((p) => !exd.has(p.id)).length;
     const unsaved = [...R.values()].filter((r) => !lb || (r.updated || "") > lb).length;
     openPane("menu", "出力・設定", `
       <ul class="menu" style="margin-top:2px"><li><button data-act="goHome">${ic("pin")}<span><b>ホーム画面に戻る</b><small>調査地・調査員を選び直します（入力した内容は保存済みです）。いま：${esc(S.site || "すべての調査地")}／${esc(S.name)}</small></span></button></li></ul>
@@ -2701,7 +2758,7 @@ window.Store = (function () {
         <li><button data-act="expGaikyo">${ic("file")}<span>概況調査（結果）<small>様式「概況調査票」（調査地ごと・樹木間隔つき）＋概況調査一覧・樹木間隔</small></span></button></li>
         <li><button data-act="expChijo">${ic("file")}<span>地上部調査（結果）<small>様式「地上部調査票」（1本1シート・写真つき）＋集計表・地上部調査一覧・樹木データ</small></span></button></li>
         <li><button data-act="expList">${ic("file")}<span>植生調査（結果）<small>調査区・出現種・素表・調査区ごとの調査票</small></span></button></li>
-        <li><button data-act="expZip">${ic("down")}<span>写真・バックアップを含めてZIPで出力<small>上の3つのExcel・すべての写真とスケッチ・バックアップ。${lb ? `前回：${new Date(lb).toLocaleString("ja-JP")}` : "まだ出力していません"}</small></span></button></li>
+        <li><button data-act="expZip">${ic("down")}<span>写真・バックアップを含めてZIPで出力<small>上の3つのExcel・写真とスケッチ・バックアップ。写真が${zipMax()}枚を超えるときは分けて出力します。${nNew ? `まだ出力していない写真 ${nNew}枚。` : ""}${lb ? `前回：${new Date(lb).toLocaleString("ja-JP")}` : "まだ出力していません"}</small></span></button></li>
       </ul>
       <div class="sec">様式のダウンロード（記入用Excel）</div>
       <ul class="menu">
@@ -2732,13 +2789,13 @@ window.Store = (function () {
       });
   }
   const renderMenuIfOpen = () => { if (S.pane === "menu") renderMenu(); };
-  function pickFile(accept, fn) { const f = $("#fileIn"); f.value = ""; f.accept = accept; f.onchange = () => { if (f.files[0]) fn(f.files[0]); }; f.click(); }
+  function pickFile(accept, fn, multi) { const f = $("#fileIn"); f.value = ""; f.accept = accept; f.multiple = !!multi; f.onchange = () => { if (f.files.length) fn(multi ? [...f.files] : f.files[0]); }; f.click(); }
   const MENU_ACT = {
     expChijo: () => exportOne("chijo"), expGaikyo: () => exportOne("gaikyo"), expList: () => exportOne("list"), expZip: exportZip,
     tplTrees: () => busy("様式を作成しています…", tplTrees), tplChijo, tplGaikyo, tplVeg: () => busy("様式を作成しています…", tplVeg),
     importTrees: () => pickFile(".xlsx,.xls", (f) => importTrees(f, "ledger")),
     importTreesAdd: () => pickFile(".xlsx,.xls", (f) => importTrees(f, "add")),
-    importBackup: () => pickFile(".zip,.json", importBackup),
+    importBackup: () => pickFile(".zip,.json", importBackup, true),
     offBm: (d) => { OFF.bm = d.v; $("#offHost").innerHTML = offlineHTML(); },
     offZ: (d) => { OFF.zmax = +d.v; $("#offHost").innerHTML = offlineHTML(); },
     offDl: downloadArea, offDel: (d) => deleteArea(d.id),
@@ -2749,7 +2806,7 @@ window.Store = (function () {
       const w = await dialog({ title: "この端末のデータをすべて削除", body: `<p>調査記録・写真・樹木データをこの端末から削除します。<b>元に戻せません。</b>先にZIPで出力してください。</p><p>削除する場合は「削除」と入力してください。</p>`, input: { placeholder: "削除" }, ok: "削除する", danger: true });
       if (w !== "削除") { if (w != null) toast("入力が違うため削除しませんでした"); return; }
       await Store.recs.clear(); await Store.photos.clear(); for (const k of ["ledger", "localtrees", "fixes", "deleted"]) await Store.kv.put(k, k === "fixes" || k === "deleted" ? {} : k === "localtrees" ? [] : null);
-      ls.set("sites", []); ls.set("lastBackup", null); await Store.kv.put("vegPresetDeleted", []); await loadRecs(); await seedVegPlots(); await loadTrees(); fillSiteLists(); applyFilter(); renderMenu(); toast("削除しました");
+      ls.set("sites", []); ls.set("lastBackup", null); await Store.kv.put("vegPresetDeleted", []); await Store.kv.put("exportedPhotos", []); await loadRecs(); await seedVegPlots(); await loadTrees(); fillSiteLists(); applyFilter(); renderMenu(); toast("削除しました");
     },
   };
   MENU_ACT.importTreesBtn = MENU_ACT.importTrees;
@@ -2841,6 +2898,7 @@ window.Store = (function () {
       await ensureMapLib();
       const ready = createMap();
       await loadRecs(); await seedVegPlots(); await loadTrees(); S.device = await ensureDevice();
+      setTimeout(() => migratePhotos().catch((e) => console.warn(e)), 3000);
       fillSiteLists();
       await ready;
       addLayers(); initUI(); initSW();
