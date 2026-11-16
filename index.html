@@ -431,7 +431,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.10.0（2026-11-12）",   // 更新したら sw.js の VERSION も変える
+  version: "1.11.0（2026-11-12）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -460,9 +460,11 @@ window.APP_CONFIG = {
     chijo: {
       label: "地上部調査", photoCaps: ["全景", "樹冠", "幹", "根元", "葉", "被害部"],
       items: [
-        { id: "g", section: "幹周（胸高周囲長）", label: "幹周 1〜5本目（cm）", colPrefix: "幹周", colUnit: "cm", type: "nums", fields: [1, 2, 3, 4, 5].map((k) => ({ id: "g" + k, label: k + "本目", max: 1000 })), help: "株立ちは1本ずつ入力。2本以上のときは Σ×0.7 を計算します（様式と同じ）" },
+        { id: "gMode", section: "幹周（胸高周囲長）", label: "測り方", colHead: "胸高の測り方", type: "buttons", options: ["周囲", "直径"], default: "周囲", noClear: true, half: true, help: "胸高（地上1.2m）で測ります。直径で測った場合も、調査票には周囲（直径×π）に換算して出力します" },
+        { id: "g", label: "胸高部 1〜5本目（cm）", colPrefix: "胸高部", colUnit: "cm", type: "nums", fields: [1, 2, 3, 4, 5].map((k) => ({ id: "g" + k, label: k + "本目", max: 1000 })), help: "株立ちは1本ずつ入力。2本以上のときは Σ×0.7 を計算します（様式と同じ）" },
         { id: "gCalc", type: "calc", calc: "girth" },
-        { id: "d", section: "地際直径（根元径）", label: "地際直径 1〜5本目（cm）", colPrefix: "地際直径", colUnit: "cm", type: "nums", fields: [1, 2, 3, 4, 5].map((k) => ({ id: "d" + k, label: k + "本目", max: 500 })) },
+        { id: "dMode", section: "地際直径（根元）", label: "測り方", colHead: "根元の測り方", type: "buttons", options: ["周囲", "直径"], default: "周囲", noClear: true, half: true, help: "根元（地際）で測ります。周囲で測った場合も、調査票には直径（周囲÷π）に換算して出力します" },
+        { id: "d", label: "根元 1〜5本目（cm）", colPrefix: "根元", colUnit: "cm", type: "nums", fields: [1, 2, 3, 4, 5].map((k) => ({ id: "d" + k, label: k + "本目", max: 500 })) },
         { id: "dCalc", type: "calc", calc: "base" },
         { id: "hw", section: "樹高・枝張り", label: "樹高（m）・枝張り（m）", type: "nums", fields: [{ id: "h", label: "樹高", unit: "m", max: 60 }, { id: "ew", label: "枝張り 東西", unit: "m", max: 60 }, { id: "ns", label: "枝張り 南北", unit: "m", max: 60 }] },
         { id: "wCalc", type: "calc", calc: "spread" },
@@ -976,13 +978,23 @@ window.Store = (function () {
   const nv = (v) => v === "" || v == null || !isFinite(+v) ? null : +v;
   const mean = (a) => { const x = a.map(nv).filter((v) => v != null); return x.length ? x.reduce((p, q) => p + q, 0) / x.length : null; };
   function stems(ans, p, n) { const v = Array.from({ length: n }, (_, k) => nv(ans[p + (k + 1)])); const x = v.filter((y) => y != null); if (!x.length) return null; return v[1] == null ? { val: v[0] ?? x[0], multi: false, n: x.length } : { val: Math.round(x.reduce((a, b) => a + b, 0) * 0.7 * 10) / 10, multi: true, n: x.length }; }
+  // 測り方（周囲・直径）をそろえる：胸高は周囲、根元は直径に換算（cm、小数1位）
+  const PI = Math.PI, r1 = (v) => Math.round(v * 10) / 10;
+  const gMode = (ans) => ans.gMode || "周囲", dMode = (ans) => ans.dMode || "周囲";
+  const girthC = (ans, k) => { const v = nv(ans["g" + k]); return v == null ? null : gMode(ans) === "直径" ? r1(v * PI) : v; };
+  const baseD = (ans, k) => { const v = nv(ans["d" + k]); return v == null ? null : dMode(ans) === "周囲" ? r1(v / PI) : v; };
   function treeMetrics(ans, items = SV.chijo.items, ctx = {}) {
-    const g = stems(ans, "g", 5), d = stems(ans, "d", 5), w = mean([ans.ew, ans.ns]), sp = mean([ans.s1, ans.s2, ans.s3, ans.s4]);
+    const conv = {}; for (let k = 1; k <= 5; k++) { conv["g" + k] = girthC(ans, k) ?? ""; conv["d" + k] = baseD(ans, k) ?? ""; }
+    const g = stems(conv, "g", 5), d = stems(conv, "d", 5), w = mean([ans.ew, ans.ns]), sp = mean([ans.s1, ans.s2, ans.s3, ans.s4]);
     return { g, d, w: w == null ? null : Math.round(w * 100) / 100, s: sp == null ? null : Math.round(sp * 100) / 100, h: nv(ans.h), vit: vitality(items, ans, ctx) };
   }
   const CALC = {
-    girth: (a) => { const m = treeMetrics(a).g; return m ? (m.multi ? `株立ち ${m.n}本：Σ×0.7 ＝ <b>${m.val}</b> cm` : `幹周 <b>${m.val}</b> cm`) : "幹周を入力すると、株立ちの合成値（Σ×0.7）を計算します"; },
-    base: (a) => { const m = treeMetrics(a).d; return m ? (m.multi ? `株立ち ${m.n}本：Σ×0.7 ＝ <b>${m.val}</b> cm` : `地際直径 <b>${m.val}</b> cm`) : "地際直径を入力すると、合成値（Σ×0.7）を計算します"; },
+    girth: (a) => { const m = treeMetrics(a).g, cv = gMode(a) === "直径"; if (!m) return cv ? "直径を入力すると、周囲（直径×π）に換算して計算します" : "周囲を入力すると、株立ちの合成値（Σ×0.7）を計算します";
+      const conv = cv ? `<br><span class="small">周囲に換算：${[1, 2, 3, 4, 5].map((k) => girthC(a, k)).filter((v) => v != null).join("・")} cm</span>` : "";
+      const raw = stems(a, "g", 5); return `${m.multi ? `株立ち ${m.n}本：Σ×0.7 ＝ ` : ""}幹周（周囲）<b>${m.val}</b> cm（直径 ${cv && raw ? raw.val : r1(m.val / PI)} cm）${conv}`; },
+    base: (a) => { const m = treeMetrics(a).d, cv = dMode(a) === "周囲"; if (!m) return cv ? "周囲を入力すると、直径（周囲÷π）に換算して計算します" : "直径を入力すると、株立ちの合成値（Σ×0.7）を計算します";
+      const conv = cv ? `<br><span class="small">直径に換算：${[1, 2, 3, 4, 5].map((k) => baseD(a, k)).filter((v) => v != null).join("・")} cm</span>` : "";
+      const raw = stems(a, "d", 5); return `${m.multi ? `株立ち ${m.n}本：Σ×0.7 ＝ ` : ""}地際直径 <b>${m.val}</b> cm（周囲 ${cv && raw ? raw.val : r1(m.val * PI)} cm）${conv}`; },
     spread: (a) => { const w = treeMetrics(a).w; return w == null ? "枝張りの平均値を計算します" : `枝張り 平均 <b>${w}</b> m`; },
     spacing: (a) => { const s = treeMetrics(a).s; return s == null ? "樹木間隔の平均値を計算します" : `樹木間隔 平均 <b>${s}</b>`; },
     vitality: (a, c) => { const v = vitality(c.items, a, c.ctx); return v ? `活力度 <b>${v.avg.toFixed(1)}</b>（${v.n}項目の平均）→ 判定：<b>${esc(v.cls)}</b>` : "評価（0〜4）を入力すると活力度と判定を計算します"; },
@@ -999,7 +1011,7 @@ window.Store = (function () {
     return parts.length ? { btn: `<button type="button" class="infobtn" data-info="${esc(it.id)}" aria-label="${esc(it.label || "")}の解説" aria-expanded="false">${ic("info")}</button>`, box: `<div class="infopop" data-infofor="${esc(it.id)}" hidden>${parts.join("")}</div>` } : { btn: "", box: "" };
   }
   function fieldHTML(it, ans, ctx) {
-    const v = ans[it.id], req = it.required ? '<span class="req">*</span>' : "", inf = infoHTML(it);
+    const v = ans[it.id] ?? it.default, req = it.required ? '<span class="req">*</span>' : "", inf = infoHTML(it);
     const lbl = `<span class="lbl">${esc(it.label)}${req}${inf.btn}</span>${inf.box}`;
     if (it.type === "note") return `${it.section ? `<div class="sec">${esc(it.section)}</div>` : ""}<div class="field" data-item="${it.id}">${lbl}</div>`;
     let inner = "";
@@ -1075,7 +1087,7 @@ window.Store = (function () {
           ans[id] = arr;
           $$(`[data-a="${id}"]`, b.parentElement).forEach((x) => x.classList.toggle("on", arr.includes(x.dataset.v)));
         } else {
-          ans[id] = String(ans[id]) === v ? "" : v;
+          ans[id] = String(ans[id] ?? (it && it.default)) === v && !(it && it.noClear) ? "" : v;
           $$(`[data-a="${id}"]`, b.parentElement).forEach((x) => x.classList.toggle("on", String(ans[id]) === x.dataset.v));
         }
         refreshVisibility(); saveCur(); return;
@@ -1967,13 +1979,13 @@ window.Store = (function () {
     for (const it of items) {
       if (it.type === "calc" || it.type === "note") continue;
       if (it.type === "nums") for (const f of it.fields) { const u = f.unit || it.colUnit; out.push({ it, f, head: `${it.colPrefix ? it.colPrefix + " " : ""}${f.label}${u ? `(${u})` : ""}`, id: f.id }); }
-      else out.push({ it, head: it.label + (it.type === "number" && it.unit ? `(${it.unit})` : "") + (it.type === "scale" ? `（${it.base ?? 1}〜${(it.base ?? 1) + it.desc.length - 1}）` : ""), id: it.id });
+      else out.push({ it, head: (it.colHead || it.label) + (it.type === "number" && it.unit ? `(${it.unit})` : "") + (it.type === "scale" ? `（${it.base ?? 1}〜${(it.base ?? 1) + it.desc.length - 1}）` : ""), id: it.id });
     }
     return out;
   }
   const colVal = (col, ans, ctx) => {
     if (!visible(col.it, ans, ctx)) return col.it.hideIf ? "（除外）" : "－";
-    const v = ans[col.id]; return col.f && !col.f.text ? num(v) : col.it.type === "scale" || col.it.type === "number" ? num(v) : ansText(v);
+    const v = ans[col.id] ?? (col.f ? undefined : col.it.default); return col.f && !col.f.text ? num(v) : col.it.type === "scale" || col.it.type === "number" ? num(v) : ansText(v);
   };
   const colOpts = (col) => col.it.type === "scale" ? ["1", "2", "3", "4"] : (col.it.type === "buttons" || col.it.type === "select") ? col.it.options : null;
 
@@ -2048,7 +2060,7 @@ window.Store = (function () {
   // 地上部調査：1本1行（入力した値と自動計算の値をすべて）
   function sheetChijoList(add, site) {
     const trees = scopeTrees(site), cols = itemCols(SV.chijo.items);
-    const head = ["調査地", "樹木番号", "樹種", "樹林の種類", "生育状況", "植栽基盤調査", "根系調査", "緯度", "経度", "位置の修正", "調査状況", "調査日", "調査者", ...cols.map((c) => c.head), "幹周 合成値(cm)", "地際直径 合成値(cm)", "枝張り 平均(m)", "活力度", "判定", "写真・スケッチ枚数", "写真ファイル"];
+    const head = ["調査地", "樹木番号", "樹種", "樹林の種類", "生育状況", "植栽基盤調査", "根系調査", "緯度", "経度", "位置の修正", "調査状況", "調査日", "調査者", ...cols.map((c) => c.head), "幹周（周囲）合成値(cm)", "地際直径 合成値(cm)", "枝張り 平均(m)", "活力度", "判定", "写真・スケッチ枚数", "写真ファイル"];
     const sh = add("地上部調査一覧").width([14, 8, 12, 8, 8, 8, 8, 11, 12, 8, 8, 11, 10, ...cols.map((c) => c.it.type === "text" ? 30 : 7), 9, 9, 9, 7, 9, 7, 40]);
     sh.row(0, head, 1); sh.heights[0] = 48; sh.freeze = [1, 3];
     trees.forEach((t, k) => {
@@ -2307,8 +2319,9 @@ window.Store = (function () {
       bk.set(d, C.kiban, t.kiban || ""); bk.set(d, C.konkei, t.konkei || "");
       if (r) {
         const ctx = {}, it = SV.chijo.items, m = treeMetrics(a);
-        C.g.forEach((ref, k) => bk.set(d, ref, nv(a["g" + (k + 1)]) ?? ""));
-        C.d.forEach((ref, k) => bk.set(d, ref, nv(a["d" + (k + 1)]) ?? ""));
+        // 測り方が違う場合は、様式の量（胸高＝周囲、根元＝直径）に換算して記入
+        C.g.forEach((ref, k) => bk.set(d, ref, girthC(a, k + 1) ?? ""));
+        C.d.forEach((ref, k) => bk.set(d, ref, baseD(a, k + 1) ?? ""));
         bk.set(d, C.h, m.h ?? ""); bk.set(d, C.ew, nv(a.ew) ?? ""); bk.set(d, C.ns, nv(a.ns) ?? "");
         C.v.forEach((ref, k) => { const item = it.find((x) => x.id === "v" + (k + 1)); bk.set(d, ref, item && visible(item, a, ctx) ? nv(a["v" + (k + 1)]) ?? "" : ""); });
         bk.cached(d, C.calc.gSum, m.g && m.g.multi ? m.g.val : "－"); bk.cached(d, C.calc.dSum, m.d && m.d.multi ? m.d.val : "－");
