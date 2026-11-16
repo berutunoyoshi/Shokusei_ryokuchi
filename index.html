@@ -320,19 +320,21 @@ body.adding .toast { bottom: calc(var(--nav-h) + var(--safe-b) + 150px); }
 body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
 
 /* ===== ダイアログ・通知 ===== */
-.modal-wrap { position: fixed; inset: 0; z-index: 100; background: rgba(10,20,14,.45); display: grid; place-items: center; padding: 16px; }
+.modal-wrap { position: fixed; inset: 0; z-index: 130; background: rgba(10,20,14,.45); display: grid; place-items: center; padding: 16px; }
 .modal { background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-2); width: min(440px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 18px 18px 14px; }
 .modal h3 { margin: 0 0 8px; font-size: 17px; }
 .modal p { margin: 6px 0; }
 .modal .btnrow { margin-top: 14px; }
 .modal ul { padding-left: 18px; margin: 6px 0; }
-.toast { position: fixed; z-index: 120; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + var(--safe-b) + 84px); background: #1d2a21; color: #fff; padding: 9px 16px; border-radius: 999px; font-size: 13.5px; box-shadow: var(--shadow-2); max-width: calc(100vw - 32px); text-align: center; }
+.toast { position: fixed; z-index: 140; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + var(--safe-b) + 84px); background: #1d2a21; color: #fff; padding: 9px 16px; border-radius: 999px; font-size: 13.5px; box-shadow: var(--shadow-2); max-width: calc(100vw - 32px); text-align: center; }
 .pbar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin: 10px 0 4px; }
 .pbar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
 .viewer { position: fixed; inset: 0; z-index: 110; background: #000; display: flex; flex-direction: column; }
 .viewer img { flex: 1; min-height: 0; object-fit: contain; width: 100%; }
 .viewer .vbar { display: flex; gap: 8px; padding: 10px; padding-bottom: calc(10px + var(--safe-b)); background: #111; }
 .viewer .vbar .inp { background: #222; color: #fff; border-color: #333; }
+.viewer .vbar .inp { flex: 1; min-width: 0; }
+.viewer .vbar .btn { flex: none; white-space: nowrap; }
 
 /* ===== 起動画面 ===== */
 .start { position: fixed; inset: 0; z-index: 90; background: var(--green-800); color: #fff; overflow: auto; display: flex; flex-direction: column; align-items: center; padding: calc(var(--safe-t) + 36px) 20px calc(var(--safe-b) + 24px); }
@@ -431,7 +433,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.12.0（2026-11-12）",   // 更新したら sw.js の VERSION も変える
+  version: "1.12.1（2026-11-12）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
