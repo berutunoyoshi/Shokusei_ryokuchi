@@ -331,6 +331,11 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
 .pbar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
 .viewer { position: fixed; inset: 0; z-index: 110; background: #000; display: flex; flex-direction: column; }
 .viewer img { flex: 1; min-height: 0; object-fit: contain; width: 100%; }
+.viewer .vtop { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: calc(var(--safe-t) + 10px) 12px 10px; background: #111; color: #fff; }
+.viewer .vinfo { font-size: 13px; opacity: .85; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer .vsave { flex: none; border: 0; border-radius: 999px; background: #fff; color: #17241b; font-weight: 700; font-size: 14px; padding: 8px 14px; display: inline-flex; align-items: center; gap: 6px; }
+.viewer .vsave:disabled { opacity: .5; }
+.viewer .vsave svg.ic { width: 18px; height: 18px; }
 .viewer .vbar { display: flex; gap: 8px; padding: 10px; padding-bottom: calc(10px + var(--safe-b)); background: #111; }
 .viewer .vbar .inp { background: #222; color: #fff; border-color: #333; }
 .viewer .vbar .inp { flex: 1; min-width: 0; }
@@ -433,7 +438,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.13.0（2026-11-12）",   // 更新したら sw.js の VERSION も変える
+  version: "1.14.0（2026-11-16）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -1604,11 +1609,23 @@ window.Store = (function () {
     const c = S.cur, p = c && c.rec.photos[k]; if (!p) return;
     const caps = (SV[c.kind] || {}).photoCaps || [];
     const d = document.createElement("div"); d.className = "viewer";
-    d.innerHTML = `<img alt="" src="${await photoURL(p.id)}"><div class="vbar">${p.sketch ? `<button class="btn line" data-v="edit" style="color:#fff;border-color:#555">${ic("edit")}編集</button>` : ""}<input class="inp" id="vCap" list="capList" value="${esc(p.cap || "")}" placeholder="写真の説明"><datalist id="capList">${caps.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
+    d.innerHTML = `<div class="vtop"><span class="vinfo">${esc(p.cap || "写真")}　${k + 1}/${c.rec.photos.length}</span><button class="vsave" data-v="save" disabled>${ic("down")}端末に保存</button></div><img alt="" src="${await photoURL(p.id)}"><div class="vbar">${p.sketch ? `<button class="btn line" data-v="edit" style="color:#fff;border-color:#555">${ic("edit")}編集</button>` : ""}<input class="inp" id="vCap" list="capList" value="${esc(p.cap || "")}" placeholder="写真の説明"><datalist id="capList">${caps.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
       <button class="btn danger" data-v="del" style="color:#ff8a80">${ic("trash")}</button><button class="btn main" data-v="ok">閉じる</button></div>`;
     document.body.appendChild(d);
+    // 端末に保存：共有画面（iPhone「画像を保存」・Android「Googleフォト」など）を開く。使えない端末はダウンロード
+    // 共有はタップの直後に呼ぶ必要があるため、画像は画面を開いた時点で用意しておく
+    let saveFile = null;
+    photoBuf(p.id).then((x) => { if (!x) return; saveFile = new File([x.buf], photoFile(c.kind, c.rec, p, k).split("/").pop(), { type: x.type || "image/jpeg" }); const sb = $(".vsave", d); if (sb) sb.disabled = false; });
+    const download = (f) => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); toast("ダウンロードに保存しました"); };
     d.addEventListener("click", async (e) => {
       const b = e.target.closest("[data-v]"); if (!b) return;
+      if (b.dataset.v === "save") {
+        if (!saveFile) return;
+        if (navigator.canShare && navigator.canShare({ files: [saveFile] })) {
+          try { await navigator.share({ files: [saveFile] }); } catch (err) { if (err && err.name !== "AbortError") download(saveFile); }
+        } else download(saveFile);
+        return;
+      }
       if (b.dataset.v === "del") {
         if (!(await dialog({ title: "この写真を削除しますか？", ok: "削除する", danger: true }))) return;
         c.rec.photos.splice(k, 1); await Store.photos.remove(p.id); dropURL(p.id);
