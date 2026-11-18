@@ -154,6 +154,7 @@ textarea.inp { min-height: 76px; resize: vertical; }
 .bbrow p { margin: 0; font-size: 12.5px; line-height: 1.5; }
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 6px; }
 .grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0 5px; }
+.addstem { margin-top: 6px; }
 .grid4 .inp, .grid5 .inp { padding: 9px 6px; text-align: center; }
 .grid4 .lbl, .grid5 .lbl { text-align: center; }
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -438,7 +439,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.14.0（2026-11-16）",   // 更新したら sw.js の VERSION も変える
+  version: "1.16.0（2026-11-16）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -483,10 +484,10 @@ window.APP_CONFIG = {
       label: "地上部調査", photoCaps: ["全景", "樹冠", "幹", "根元", "葉", "被害部"],
       items: [
         { id: "gMode", section: "幹周（胸高周囲長）", label: "測り方", colHead: "胸高の測り方", type: "buttons", options: ["周囲", "直径"], default: "周囲", noClear: true, half: true, help: "胸高（地上1.2m）で測ります。直径で測った場合も、調査票には周囲（直径×π）に換算して出力します" },
-        { id: "g", label: "胸高部 1〜5本目（cm）", colPrefix: "胸高部", colUnit: "cm", type: "nums", fields: [1, 2, 3, 4, 5].map((k) => ({ id: "g" + k, label: k + "本目", max: 1000 })), help: "株立ちは1本ずつ入力。2本以上のときは Σ×0.7 を計算します（様式と同じ）" },
+        { id: "g", label: "胸高部（cm）", colPrefix: "胸高部", colUnit: "cm", type: "nums", addable: "g", fields: [1, 2, 3, 4, 5].map((k) => ({ id: "g" + k, label: k + "本目", max: 1000 })), help: "株立ちは1本ずつ入力。6本以上は「＋ 本数を追加」で欄を増やします。2本以上のときは Σ×0.7 を計算します（様式と同じ）" },
         { id: "gCalc", type: "calc", calc: "girth" },
         { id: "dMode", section: "地際直径（根元）", label: "測り方", colHead: "根元の測り方", type: "buttons", options: ["周囲", "直径"], default: "周囲", noClear: true, half: true, help: "根元（地際）で測ります。周囲で測った場合も、調査票には直径（周囲÷π）に換算して出力します" },
-        { id: "d", label: "根元 1〜5本目（cm）", colPrefix: "根元", colUnit: "cm", type: "nums", fields: [1, 2, 3, 4, 5].map((k) => ({ id: "d" + k, label: k + "本目", max: 500 })) },
+        { id: "d", label: "根元（cm）", colPrefix: "根元", colUnit: "cm", type: "nums", addable: "d", fields: [1, 2, 3, 4, 5].map((k) => ({ id: "d" + k, label: k + "本目", max: 500 })) },
         { id: "dCalc", type: "calc", calc: "base" },
         { id: "hw", section: "樹高・枝張り", label: "樹高（m）・枝張り（m）", type: "nums", fields: [{ id: "h", label: "樹高", unit: "m", max: 60 }, { id: "ew", label: "枝張り 東西", unit: "m", max: 60 }, { id: "ns", label: "枝張り 南北", unit: "m", max: 60 }] },
         { id: "wCalc", type: "calc", calc: "spread" },
@@ -1009,23 +1010,26 @@ window.Store = (function () {
   // 株立ちの合成値：2本目が空欄ならそのまま、2本以上なら Σ×0.7（様式 F6・L6 と同じ）
   const nv = (v) => v === "" || v == null || !isFinite(+v) ? null : +v;
   const mean = (a) => { const x = a.map(nv).filter((v) => v != null); return x.length ? x.reduce((p, q) => p + q, 0) / x.length : null; };
-  function stems(ans, p, n) { const v = Array.from({ length: n }, (_, k) => nv(ans[p + (k + 1)])); const x = v.filter((y) => y != null); if (!x.length) return null; return v[1] == null ? { val: v[0] ?? x[0], multi: false, n: x.length } : { val: Math.round(x.reduce((a, b) => a + b, 0) * 0.7 * 10) / 10, multi: true, n: x.length }; }
+  // 株立ちの本数（入力欄の数）：最低5本。「＋」で増やした数、または入力済みの最後の番号まで
+  function stemCount(ans, p) { let n = Math.max(5, +ans[p + "N"] || 0); for (const k of Object.keys(ans)) { const m = k.match(new RegExp(`^${p}(\\d+)$`)); if (m && filled(ans[k])) n = Math.max(n, +m[1]); } return n; }
+  const stemRange = (ans, p) => Array.from({ length: stemCount(ans, p) }, (_, k) => k + 1);
+  function stems(ans, p, n) { n = Math.max(n || 0, stemCount(ans, p)); const v = Array.from({ length: n }, (_, k) => nv(ans[p + (k + 1)])); const x = v.filter((y) => y != null); if (!x.length) return null; return v[1] == null ? { val: v[0] ?? x[0], multi: false, n: x.length } : { val: Math.round(x.reduce((a, b) => a + b, 0) * 0.7 * 10) / 10, multi: true, n: x.length }; }
   // 測り方（周囲・直径）をそろえる：胸高は周囲、根元は直径に換算（cm、小数1位）
   const PI = Math.PI, r1 = (v) => Math.round(v * 10) / 10;
   const gMode = (ans) => ans.gMode || "周囲", dMode = (ans) => ans.dMode || "周囲";
   const girthC = (ans, k) => { const v = nv(ans["g" + k]); return v == null ? null : gMode(ans) === "直径" ? r1(v * PI) : v; };
   const baseD = (ans, k) => { const v = nv(ans["d" + k]); return v == null ? null : dMode(ans) === "周囲" ? r1(v / PI) : v; };
   function treeMetrics(ans, items = SV.chijo.items, ctx = {}) {
-    const conv = {}; for (let k = 1; k <= 5; k++) { conv["g" + k] = girthC(ans, k) ?? ""; conv["d" + k] = baseD(ans, k) ?? ""; }
-    const g = stems(conv, "g", 5), d = stems(conv, "d", 5), w = mean([ans.ew, ans.ns]), sp = mean([ans.s1, ans.s2, ans.s3, ans.s4]);
+    const conv = {}; for (const k of stemRange(ans, "g")) conv["g" + k] = girthC(ans, k) ?? ""; for (const k of stemRange(ans, "d")) conv["d" + k] = baseD(ans, k) ?? "";
+    const g = stems(conv, "g", stemCount(ans, "g")), d = stems(conv, "d", stemCount(ans, "d")), w = mean([ans.ew, ans.ns]), sp = mean([ans.s1, ans.s2, ans.s3, ans.s4]);
     return { g, d, w: w == null ? null : Math.round(w * 100) / 100, s: sp == null ? null : Math.round(sp * 100) / 100, h: nv(ans.h), vit: vitality(items, ans, ctx) };
   }
   const CALC = {
     girth: (a) => { const m = treeMetrics(a).g, cv = gMode(a) === "直径"; if (!m) return cv ? "直径を入力すると、周囲（直径×π）に換算して計算します" : "周囲を入力すると、株立ちの合成値（Σ×0.7）を計算します";
-      const conv = cv ? `<br><span class="small">周囲に換算：${[1, 2, 3, 4, 5].map((k) => girthC(a, k)).filter((v) => v != null).join("・")} cm</span>` : "";
+      const conv = cv ? `<br><span class="small">周囲に換算：${stemRange(a, "g").map((k) => girthC(a, k)).filter((v) => v != null).join("・")} cm</span>` : "";
       const raw = stems(a, "g", 5); return `${m.multi ? `株立ち ${m.n}本：Σ×0.7 ＝ ` : ""}幹周（周囲）<b>${m.val}</b> cm（直径 ${cv && raw ? raw.val : r1(m.val / PI)} cm）${conv}`; },
     base: (a) => { const m = treeMetrics(a).d, cv = dMode(a) === "周囲"; if (!m) return cv ? "周囲を入力すると、直径（周囲÷π）に換算して計算します" : "直径を入力すると、株立ちの合成値（Σ×0.7）を計算します";
-      const conv = cv ? `<br><span class="small">直径に換算：${[1, 2, 3, 4, 5].map((k) => baseD(a, k)).filter((v) => v != null).join("・")} cm</span>` : "";
+      const conv = cv ? `<br><span class="small">直径に換算：${stemRange(a, "d").map((k) => baseD(a, k)).filter((v) => v != null).join("・")} cm</span>` : "";
       const raw = stems(a, "d", 5); return `${m.multi ? `株立ち ${m.n}本：Σ×0.7 ＝ ` : ""}地際直径 <b>${m.val}</b> cm（周囲 ${cv && raw ? raw.val : r1(m.val * PI)} cm）${conv}`; },
     spread: (a) => { const w = treeMetrics(a).w; return w == null ? "枝張りの平均値を計算します" : `枝張り 平均 <b>${w}</b> m`; },
     spacing: (a) => { const s = treeMetrics(a).s; return s == null ? "樹木間隔の平均値を計算します" : `樹木間隔 平均 <b>${s}</b>`; },
@@ -1053,9 +1057,9 @@ window.Store = (function () {
     else if (it.type === "calc") return `<div class="calc" data-item="${it.id}" data-calc="${it.calc}"${it.zone ? ` data-zone="${it.zone}"` : ""}></div>`;
     else if (it.type === "select") inner = `<select class="inp" data-a="${it.id}"><option value="">（選択）</option>${it.options.map((o) => `<option${v === o ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
     else if (it.type === "number") inner = `<div class="unitbox"><input class="inp" data-a="${it.id}" data-num="1" inputmode="decimal" value="${esc(v ?? "")}"><span class="unit">${esc(it.unit || "")}</span></div>`;
-    else if (it.type === "nums") inner = `<div class="grid${it.fields.length >= 5 ? 5 : it.fields.length === 4 ? 4 : it.fields.length >= 3 ? 3 : 2}">${it.fields.map((f) => `<label class="field" style="margin:0"><span class="lbl" style="font-weight:500">${esc(f.label)}</span>${f.text
+    else if (it.type === "nums") { const flds = it.addable ? stemRange(ans, it.addable).map((k) => ({ id: it.addable + k, label: k + "本目", max: 1000 })) : it.fields; inner = `<div class="grid${flds.length >= 5 ? 5 : flds.length === 4 ? 4 : flds.length >= 3 ? 3 : 2}">${flds.map((f) => `<label class="field" style="margin:0"><span class="lbl" style="font-weight:500">${esc(f.label)}</span>${f.text
       ? `<input class="inp" data-a="${f.id}" value="${esc(ans[f.id] ?? "")}">`
-      : `<div class="unitbox"><input class="inp" data-a="${f.id}" data-num="1" inputmode="decimal" value="${esc(ans[f.id] ?? "")}"><span class="unit">${esc(f.unit || "")}</span></div>`}</label>`).join("")}</div>`;
+      : `<div class="unitbox"><input class="inp" data-a="${f.id}" data-num="1" inputmode="decimal" value="${esc(ans[f.id] ?? "")}"><span class="unit">${esc(f.unit || "")}</span></div>`}</label>`).join("")}</div>${it.addable ? `<button type="button" class="btn line mini addstem" data-act="addStem" data-for="${it.id}">＋ 本数を追加</button>` : ""}`; }
     else if (it.type === "line") inner = `<input class="inp" data-a="${it.id}" value="${esc(v ?? "")}" placeholder="${esc(it.placeholder || "")}"${it.list ? ` list="${it.list}"` : ""}>`;
     else if (it.type === "text") inner = `<textarea class="inp" data-a="${it.id}" placeholder="${esc(it.placeholder || "")}">${esc(v ?? "")}</textarea>${it.voice && hasVoice() ? `<button type="button" class="btn line mini" data-voice="${it.id}" style="margin-top:6px">${ic("mic")}音声で入力</button>` : ""}`;
     let extra = "";
@@ -1322,9 +1326,8 @@ window.Store = (function () {
       ${zonesFixed(site) ? "" : `<div class="field"><span class="lbl">この調査地の調査区（タッチで切り替え）</span><div class="seg" id="gzSel"></div></div>`}
       <div class="ztabs" id="gzTabs" role="tablist"></div>
       <div id="gzBody"></div>
-      <div class="sec">写真</div><div id="phHost"></div>
       <div class="sticky-foot">${old ? `<button class="btn danger" data-act="delRec">${ic("trash")}</button>` : ""}<button class="btn line" data-act="backList">一覧へ</button><button class="btn main" data-act="doneRec">${old && old.status === "done" ? "完了済み" : "調査完了"}</button></div>`,
-      () => { renderGZone(); renderPhotos(); });
+      () => { renderGZone(); });
   }
   function renderGZone() {
     const c = S.cur; if (!c || c.kind !== "gaikyo") return;
@@ -1334,8 +1337,10 @@ window.Store = (function () {
     if ($("#gzSel")) $("#gzSel").innerHTML = GK.zones.map(([k]) => `<button type="button" data-act="gZoneSel" data-z="${k}"${act.includes(k) ? ' class="on"' : ""}>${esc(zoneName(a, k))}</button>`).join("");
     $("#gzTabs").innerHTML = act.map((k) => `<button role="tab" data-act="gZone" data-z="${k}"${z === k ? ' class="on" aria-selected="true"' : ""}>${esc(zoneShort(a, k))}</button>`).join("") + `<button role="tab" data-act="gZone" data-z="note"${z === "note" ? ' class="on" aria-selected="true"' : ""}>備考</button>`;
     const its = z === "note" ? noteItems() : zoneItems(z);
-    $("#gzBody").innerHTML = (z !== "note" ? `<div class="ztitle">${esc(zoneName(a, z))}</div><div class="btnrow" style="margin-bottom:8px"><button class="btn line mini" data-act="gCopy">${ic("file")}ほかの調査区から写す</button></div>` : `<div class="ztitle">備考</div>`) + itemsHTML(its, a, {});
-    paintIcons($("#gzBody")); refreshVisibility();
+    const legacy = (c.rec.photos || []).some((p) => !p.zone);
+    $("#gzBody").innerHTML = (z !== "note" ? `<div class="ztitle">${esc(zoneName(a, z))}</div><div class="btnrow" style="margin-bottom:8px"><button class="btn line mini" data-act="gCopy">${ic("file")}ほかの調査区から写す</button></div>` : `<div class="ztitle">備考</div>`) + itemsHTML(its, a, {})
+      + (z !== "note" ? `<div class="sec">写真（${esc(zoneName(a, z))}）</div><div id="phHost"></div>` : legacy ? `<div class="sec">調査区が決まっていない写真</div><p class="small muted">前の版で撮った写真です。写真をタップして確認・削除できます。</p><div id="phHost"></div>` : "");
+    paintIcons($("#gzBody")); refreshVisibility(); renderPhotos();
   }
   async function gZoneSel(z) {
     const c = S.cur, a = c.rec.ans, act = activeZones(c.rec.site, a);
@@ -1581,11 +1586,14 @@ window.Store = (function () {
       img.src = url;
     });
   }
+  // 概況調査は調査区ごとに写真を分ける（p.zone）。ほかの調査は記録ごと
+  const photoZone = (c) => c && c.kind === "gaikyo" ? (S.gZone && S.gZone !== "note" ? S.gZone : "") : null;
+  const photosIn = (c) => { const z = photoZone(c), all = (c.rec.photos || []).map((p, k) => [p, k]); return z == null ? all : all.filter(([p]) => (p.zone || "") === z); };
   async function renderPhotos() {
     const host = $("#phHost"), c = S.cur; if (!host || !c) return;
-    const ph = c.rec.photos || [];
-    host.innerHTML = `<div class="photos">${ph.map((p, k) => `<figure data-act="viewPh" data-k="${k}"${p.sketch ? ' class="isk"' : ""}><img alt="" data-ph="${p.id}">${p.sketch ? `<span class="skbadge">${ic("edit")}</span>` : ""}<figcaption>${esc(p.cap || "（説明なし）")}</figcaption></figure>`).join("")}
-      ${ph.length < CFG.maxPhotos ? `<label class="addph">${ic("camera")}写真を追加<input type="file" id="phIn" accept="image/*" multiple hidden></label><button type="button" class="addph" data-act="newSketch">${ic("edit")}${c.kind === "veg" ? "断面図・スケッチ" : "スケッチ"}</button>` : ""}</div>
+    const pk = photosIn(c), ph = pk.map((x) => x[0]);
+    host.innerHTML = `<div class="photos">${pk.map(([p, k]) => `<figure data-act="viewPh" data-k="${k}"${p.sketch ? ' class="isk"' : ""}><img alt="" data-ph="${p.id}">${p.sketch ? `<span class="skbadge">${ic("edit")}</span>` : ""}<figcaption>${esc(p.cap || "（説明なし）")}</figcaption></figure>`).join("")}
+      ${ph.length < CFG.maxPhotos && photoZone(c) !== "" ? `<label class="addph">${ic("camera")}写真を追加<input type="file" id="phIn" accept="image/*" multiple hidden></label><button type="button" class="addph" data-act="newSketch">${ic("edit")}${c.kind === "veg" ? "断面図・スケッチ" : "スケッチ"}</button>` : ""}</div>
       <p class="help">写真・スケッチ ${ph.length}/${CFG.maxPhotos}枚。タップすると説明の入力・削除${ph.some((p) => p.sketch) ? "、スケッチは編集" : ""}ができます。</p>`;
     for (const img of $$("img[data-ph]", host)) img.src = await photoURL(img.dataset.ph);
   }
@@ -1595,12 +1603,12 @@ window.Store = (function () {
     c.rec.photos = c.rec.photos || [];
     let n = 0;
     for (const f of [...files]) {
-      if (c.rec.photos.length >= CFG.maxPhotos) { toast(`写真は${CFG.maxPhotos}枚までです`); break; }
+      if (photosIn(c).length >= CFG.maxPhotos) { toast(`写真は${c.kind === "gaikyo" ? "調査区ごとに" : ""}${CFG.maxPhotos}枚までです`); break; }
       try {
         const { blob } = await shrinkBlob(f, CFG.photoMaxPx), id = "p:" + uid(), at = new Date().toISOString();
-        const used = new Set(c.rec.photos.map((p) => p.cap)), cap = caps.find((x) => !used.has(x)) || "";
+        const used = new Set(photosIn(c).map(([p]) => p.cap)), cap = caps.find((x) => !used.has(x)) || "", z = photoZone(c);
         await putPhoto(id, c.rec.id, blob, at);
-        c.rec.photos.push({ id, cap, at }); n++;
+        c.rec.photos.push(z ? { id, cap, at, zone: z } : { id, cap, at }); n++;
       } catch (e) { toast(e.message); }
     }
     if (n) { await saveCur(); renderPhotos(); toast(`写真を${n}枚追加しました`); }
@@ -1609,7 +1617,7 @@ window.Store = (function () {
     const c = S.cur, p = c && c.rec.photos[k]; if (!p) return;
     const caps = (SV[c.kind] || {}).photoCaps || [];
     const d = document.createElement("div"); d.className = "viewer";
-    d.innerHTML = `<div class="vtop"><span class="vinfo">${esc(p.cap || "写真")}　${k + 1}/${c.rec.photos.length}</span><button class="vsave" data-v="save" disabled>${ic("down")}端末に保存</button></div><img alt="" src="${await photoURL(p.id)}"><div class="vbar">${p.sketch ? `<button class="btn line" data-v="edit" style="color:#fff;border-color:#555">${ic("edit")}編集</button>` : ""}<input class="inp" id="vCap" list="capList" value="${esc(p.cap || "")}" placeholder="写真の説明"><datalist id="capList">${caps.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
+    d.innerHTML = `<div class="vtop"><span class="vinfo">${esc(p.cap || "写真")}　${photosIn(c).findIndex(([, j]) => j === k) + 1}/${photosIn(c).length}</span><button class="vsave" data-v="save" disabled>${ic("down")}端末に保存</button></div><img alt="" src="${await photoURL(p.id)}"><div class="vbar">${p.sketch ? `<button class="btn line" data-v="edit" style="color:#fff;border-color:#555">${ic("edit")}編集</button>` : ""}<input class="inp" id="vCap" list="capList" value="${esc(p.cap || "")}" placeholder="写真の説明"><datalist id="capList">${caps.map((x) => `<option value="${esc(x)}">`).join("")}</datalist>
       <button class="btn danger" data-v="del" style="color:#ff8a80">${ic("trash")}</button><button class="btn main" data-v="ok">閉じる</button></div>`;
     document.body.appendChild(d);
     // 端末に保存：共有画面（iPhone「画像を保存」・Android「Googleフォト」など）を開く。使えない端末はダウンロード
@@ -1692,6 +1700,9 @@ window.Store = (function () {
     switch (a) {
       case "chijoTab": S.chijoTab = d.k; showChijoList(); break;
       case "openTree": openChijo(+d.i); break;
+      case "addStem": { const it = c.items.find((x) => x.id === d.for), a = c.rec.ans, n = stemCount(a, it.addable) + 1; if (n > 30) { toast("30本までです"); break; }
+        a[it.addable + "N"] = n; const el = $(`[data-item="${it.id}"]`, $("#sheetBody")); if (el) { el.outerHTML = fieldHTML({ ...it, section: undefined }, a, c.ctx); }
+        refreshVisibility(); await saveCur(); const inp = $(`[data-a="${it.addable}${n}"]`); if (inp) { inp.focus(); inp.scrollIntoView({ block: "center", behavior: "smooth" }); } break; }
       case "delTree": if (await deleteTrees([T[c.i].key])) showChijoList(); break;
       case "delStart": S.delMode = true; S.delSel = new Set(); showChijoList(); break;
       case "delCancel": S.delMode = false; S.delSel = null; showChijoList(); break;
@@ -1955,9 +1966,9 @@ window.Store = (function () {
           const blob = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.9)), cap = $("#skTitle", wrap).value.trim() || "スケッチ", at = new Date().toISOString();
           if (meta) { meta.cap = cap; meta.sketch = d; meta.at = at; await putPhoto(meta.id, c.rec.id, blob, at); }
           else {
-            if ((c.rec.photos || []).length >= CFG.maxPhotos) { toast(`写真・スケッチは合わせて${CFG.maxPhotos}枚までです`); return; }
-            const id = "p:" + uid(); await putPhoto(id, c.rec.id, blob, at);
-            (c.rec.photos = c.rec.photos || []).push({ id, cap, at, sketch: d });
+            if (photosIn(c).length >= CFG.maxPhotos) { toast(`写真・スケッチは合わせて${CFG.maxPhotos}枚までです`); return; }
+            const id = "p:" + uid(), z = photoZone(c); await putPhoto(id, c.rec.id, blob, at);
+            (c.rec.photos = c.rec.photos || []).push(z ? { id, cap, at, sketch: d, zone: z } : { id, cap, at, sketch: d });
           }
           await saveCur(); renderPhotos(); wrap.remove(); toast("スケッチを保存しました"); break;
         }
@@ -2049,11 +2060,11 @@ window.Store = (function () {
   const num = (v) => v == null || v === "" ? "" : isFinite(+v) ? +v : String(v);
 
   // ---------- 項目を列に展開（nums は欄ごとに1列） ----------
-  function itemCols(items) {
+  function itemCols(items, recs = []) {
     const out = [];
     for (const it of items) {
       if (it.type === "calc" || it.type === "note") continue;
-      if (it.type === "nums") for (const f of it.fields) { const u = f.unit || it.colUnit; out.push({ it, f, head: `${it.colPrefix ? it.colPrefix + " " : ""}${f.label}${u ? `(${u})` : ""}`, id: f.id }); }
+      if (it.type === "nums") for (const f of (it.addable ? Array.from({ length: Math.max(5, ...recs.map((r) => stemCount(r.ans || {}, it.addable))) }, (_, k) => ({ id: it.addable + (k + 1), label: (k + 1) + "本目" })) : it.fields)) { const u = f.unit || it.colUnit; out.push({ it, f, head: `${it.colPrefix ? it.colPrefix + " " : ""}${f.label}${u ? `(${u})` : ""}`, id: f.id }); }
       else out.push({ it, head: (it.colHead || it.label) + (it.type === "number" && it.unit ? `(${it.unit})` : "") + (it.type === "scale" ? `（${it.base ?? 1}〜${(it.base ?? 1) + it.desc.length - 1}）` : ""), id: it.id });
     }
     return out;
@@ -2086,7 +2097,8 @@ window.Store = (function () {
   // =====================================================================
   const fname = (s) => String(s ?? "").replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 60);
   function photoFile(kind, r, p, k) {
-    const head = kind === "chijo" ? `地上部/${fname(r.site)}_${fname(r.tno)}` : kind === "gaikyo" ? `概況/${fname(r.site)}` : `植生/${fname(r.no)}`;
+    if (kind === "gaikyo" && p.zone) k = (r.photos || []).slice(0, k).filter((x) => x.zone === p.zone).length;
+    const head = kind === "chijo" ? `地上部/${fname(r.site)}_${fname(r.tno)}` : kind === "gaikyo" ? `概況/${fname(r.site)}${p.zone ? "_" + fname(zoneName(r.ans || {}, p.zone)) : ""}` : `植生/${fname(r.no)}`;
     return `写真/${head}_${String(k + 1).padStart(2, "0")}${p.cap ? "_" + fname(p.cap) : ""}.jpg`;
   }
   function vegSheet(bk, name, r) {
@@ -2134,7 +2146,7 @@ window.Store = (function () {
   const photoList = (kind, r) => r ? (r.photos || []).map((p, j) => photoFile(kind, r, p, j) + (p.sketch ? "（スケッチ）" : "")).join("\n") : "";
   // 地上部調査：1本1行（入力した値と自動計算の値をすべて）
   function sheetChijoList(add, site) {
-    const trees = scopeTrees(site), cols = itemCols(SV.chijo.items);
+    const trees = scopeTrees(site), cols = itemCols(SV.chijo.items, trees.map((t) => R.get(recId.chijo(t.key))).filter(Boolean));
     const head = ["調査地", "樹木番号", "樹種", "樹林の種類", "生育状況", "植栽基盤調査", "根系調査", "緯度", "経度", "位置の修正", "調査状況", "調査日", "調査者", ...cols.map((c) => c.head), "幹周（周囲）合成値(cm)", "地際直径 合成値(cm)", "枝張り 平均(m)", "活力度", "判定", "写真・スケッチ枚数", "写真ファイル"];
     const sh = add("地上部調査一覧").width([14, 8, 12, 8, 8, 8, 8, 11, 12, 8, 8, 11, 10, ...cols.map((c) => c.it.type === "text" ? 30 : 7), 9, 9, 9, 7, 9, 7, 40]);
     sh.row(0, head, 1); sh.heights[0] = 48; sh.freeze = [1, 3];
@@ -2162,7 +2174,8 @@ window.Store = (function () {
       const notes = GKr.filter((x) => filled(a["note|" + x.row])).map((x) => `${x.label}：${a["note|" + x.row]}`).concat(filled(a.otherName) ? [`その他の内容：${a.otherName}`] : []).join("／");
       for (const z of activeZones(s, a)) {
         const ls_ = nv(a[`${z}|lightSite`]), lr = nv(a[`${z}|lightRef`]);
-        gs.row(gr++, [s, zoneName(a, z), ST_LABEL[statusOf(r)], r.date, r.by, a.weather || "", r.lat ?? "", r.lon ?? "", ...GKr.map((x) => x.get(a, z)), ls_ != null && lr ? Math.round(ls_ / lr * 1000) / 10 : "", spAvg(spVals(a, z)), notes, photoList("gaikyo", r)], 3);
+        const zph = (r.photos || []).map((p, j) => [p, j]).filter(([p]) => p.zone === z || !p.zone).map(([p, j]) => photoFile("gaikyo", r, p, j) + (p.sketch ? "（スケッチ）" : "")).join("\n");
+        gs.row(gr++, [s, zoneName(a, z), ST_LABEL[statusOf(r)], r.date, r.by, a.weather || "", r.lat ?? "", r.lon ?? "", ...GKr.map((x) => x.get(a, z)), ls_ != null && lr ? Math.round(ls_ / lr * 1000) / 10 : "", spAvg(spVals(a, z)), notes, zph], 3);
       } }
   }
   function sheetSpacing(add, site) {
@@ -2400,6 +2413,9 @@ window.Store = (function () {
         bk.set(d, C.h, m.h ?? ""); bk.set(d, C.ew, nv(a.ew) ?? ""); bk.set(d, C.ns, nv(a.ns) ?? "");
         C.v.forEach((ref, k) => { const item = it.find((x) => x.id === "v" + (k + 1)); bk.set(d, ref, item && visible(item, a, ctx) ? nv(a["v" + (k + 1)]) ?? "" : ""); });
         bk.cached(d, C.calc.gSum, m.g && m.g.multi ? m.g.val : "－"); bk.cached(d, C.calc.dSum, m.d && m.d.multi ? m.d.val : "－");
+        // 6本以上の株立ちは様式の欄（5本）に入りきらないため、Σ×0.7 の欄を計算済みの値にする（全本数で計算）
+        if (stemRange(a, "g").some((k) => k > 5 && girthC(a, k) != null)) bk.set(d, C.calc.gSum, m.g.val);
+        if (stemRange(a, "d").some((k) => k > 5 && baseD(a, k) != null)) bk.set(d, C.calc.dSum, m.d.val);
         bk.cached(d, C.calc.wAvg, m.w); bk.cached(d, C.calc.vit, m.vit ? m.vit.avg : null); bk.cached(d, C.calc.judge, m.vit ? m.vit.cls : null);
         const ph = [];
         for (const p of (r.photos || []).slice(0, C.photoBoxes.length)) { const x = await photoBuf(p.id); if (!x) continue; let t; try { t = await shrinkBlob(new Blob([x.buf], { type: x.type }), CFG.excelPhotoPx || 640, 0.78); } catch { continue; } const w = t.w, h = t.h; ph.push({ data: t.blob, w, h, cap: p.cap, box: C.photoBoxes[ph.length] }); }
