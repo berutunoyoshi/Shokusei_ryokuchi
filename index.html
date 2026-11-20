@@ -455,7 +455,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.17.0（2026-11-18）",   // 更新したら sw.js の VERSION も変える
+  version: "1.18.0（2026-11-20）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -2053,6 +2053,15 @@ window.Store = (function () {
       compare.push({ label, nG: G.length, nB: B.length, vitG: st(G, "vit"), vitB: st(B, "vit"), hG: st(G, "h"), hB: st(B, "h"), gG: st(G, "g"), gB: st(B, "g"), tVit: mwu(G.map((x) => x.vit), B.map((x) => x.vit)), tH: mwu(G.map((x) => x.h), B.map((x) => x.h)), tG: mwu(G.map((x) => x.g), B.map((x) => x.g)) }); };
     for (const s of sitesC) for (const f of CFG.forestTypes) cmp1(`${siteShort(s)} ${f}`, trees.filter((x) => x.site === s && x.forest === f));
     cmp1("全体", trees);
+    // 樹種ごと
+    const worstOf = (means) => { let k = -1, mx = -1; means.forEach((v, i) => { if (v != null && v > mx) { mx = v; k = i; } }); return k; };
+    const spMap = new Map();
+    for (const x of trees) { const k = x.t.sp || "樹種不明"; if (!spMap.has(k)) spMap.set(k, { sp: k, all: [], done: [] }); const g = spMap.get(k); g.all.push(x); if (x.vit != null) g.done.push(x); }
+    const species = [...spMap.values()].filter((g) => g.done.length).map((g) => { const G = g.done.filter((x) => x.growth === "良好"), B = g.done.filter((x) => x.growth === "不良"), im = SCORE_ITEMS.map((it, i) => avg(g.done.map((x) => x.items.at(i))));
+      return { sp: g.sp, label: g.sp, n: g.done.length, nAll: g.all.length, vitMean: avg(g.done.map((x) => x.vit)), vitSd: sdv(g.done.map((x) => x.vit)), hMean: avg(g.done.map((x) => x.h)), gMean: avg(g.done.map((x) => x.g)),
+        counts: Object.fromEntries(VCLS.map((c) => [c, g.done.filter((x) => x.cls === c).length])), itemMeans: im, worst: worstOf(im), nG: G.length, nB: B.length, vitG: avg(G.map((x) => x.vit)), vitB: avg(B.map((x) => x.vit)), test: mwu(G.map((x) => x.vit), B.map((x) => x.vit)),
+        bySite: Object.fromEntries(sitesC.map((st) => { const a = g.done.filter((x) => x.site === st); return [st, { n: a.length, m: avg(a.map((x) => x.vit)) }]; })) }; })
+      .sort((a, b) => b.n - a.n || a.sp.localeCompare(b.sp, "ja"));
     // 概況：調査区ごと
     const gk = [];
     for (const s of siteList().filter(inS)) { const r = R.get(recId.gaikyo(s)); if (!r) continue; const a = r.ans;
@@ -2072,7 +2081,7 @@ window.Store = (function () {
       if (gi >= 0 && bi >= 0) { const A = names.at(gi), B = names.at(bi); pairs.push({ label: `${siteShort(s)} ${f}`, good: plots.at(gi).no, bad: plots.at(bi).no, nG: A.size, nB: B.size, common: [...A].filter((n) => B.has(n)), onlyG: [...A].filter((n) => !B.has(n)), onlyB: [...B].filter((n) => !A.has(n)), sor: sor.at(gi).at(bi), jac: jac.at(gi).at(bi) }); }
     }
     const ra = reciprocalAveraging(plots);
-    return { site, groups, compare, gk, relSp, relLt, plots, sor, jac, pairs, ra, nTrees: trees.length, nDone: trees.filter((x) => x.vit != null).length };
+    return { site, groups, compare, species, sitesC, gk, relSp, relLt, plots, sor, jac, pairs, ra, nTrees: trees.length, nDone: trees.filter((x) => x.vit != null).length };
   }
   // 組成表の並べ替え：相反平均法（似た調査区・一緒に出る種が近くに並ぶ）。被度を％に換えて重みにする
   function reciprocalAveraging(plots) {
@@ -2096,10 +2105,10 @@ window.Store = (function () {
   // ---------- グラフ（SVG。アプリの画面とExcelの両方で使う。色は直接指定） ----------
   const SVGF = "font-family='-apple-system,Hiragino Sans,Noto Sans JP,Meiryo,sans-serif'";
   const xe2 = (s) => esc(String(s ?? ""));
-  function chartStack(groups) {
+  function chartStack(groups, title = "活力度の判定の内訳（調査区ごと）") {
     const gs = groups.filter((g) => g.n), W = 520, rowH = 30, L = 170, top = 62, H = top + gs.length * rowH + 40;
     if (!gs.length) return "";
-    let s = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' width='${W}' height='${H}' ${SVGF} font-size='13'><rect width='${W}' height='${H}' fill='#fff'/><text x='16' y='26' font-size='15' font-weight='700' fill='#17241b'>活力度の判定の内訳（調査区ごと）</text>`;
+    let s = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' width='${W}' height='${H}' ${SVGF} font-size='13'><rect width='${W}' height='${H}' fill='#fff'/><text x='16' y='26' font-size='15' font-weight='700' fill='#17241b'>${xe2(title)}</text>`;
     VCLS.forEach((c, i) => { s += `<rect x='${16 + i * 100}' y='38' width='12' height='12' fill='${VCOL[c] || "#999"}'/><text x='${32 + i * 100}' y='49' font-size='12' fill='#444'>${xe2(c)}</text>`; });
     gs.forEach((g, i) => { const y = top + i * rowH; let x = L; s += `<text x='${L - 8}' y='${y + 18}' text-anchor='end' fill='#17241b'>${xe2(g.label)}</text>`;
       VCLS.forEach((c) => { const w = (W - L - 70) * (g.counts[c] || 0) / g.n; if (w > 0) { s += `<rect x='${x}' y='${y + 4}' width='${w}' height='20' fill='${VCOL[c]}'/>`; if (w > 22) s += `<text x='${x + w / 2}' y='${y + 18}' text-anchor='middle' font-size='11.5' fill='#fff'>${g.counts[c]}</text>`; x += w; } });
@@ -2164,6 +2173,10 @@ window.Store = (function () {
       <p class="small muted">検定はマン・ホイットニーのU検定（各群3本以上）。活力度は0が良好・4が不良です。</p>
       <h4>項目別の平均（赤は、その調査区で最も評価が悪い項目）</h4>
       ${anTable(["項目", ...A.groups.filter((g) => g.n).map((g) => g.label)], SCORE_ITEMS.map((it, i) => [it.label, ...A.groups.filter((g) => g.n).map((g) => f2(g.itemMeans.at(i)))]), (i, j) => j > 0 && worst(A.groups.filter((g) => g.n).at(j - 1)) === i)}
+      <h4>樹種ごとの結果</h4>${chartStack(A.species, "活力度の判定の内訳（樹種ごと）")}
+      ${anTable(["樹種", "調査済み", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)", "最も悪い項目", "良好区／不良区 平均", "検定（良好区と不良区）"], A.species.map((g) => [g.sp + (g.n < 3 ? "（少数）" : ""), `${g.n}/${g.nAll}本`, f2(g.vitMean), f2(g.vitSd), ...VCLS.map((c) => `${g.counts[c]}本`), f2(g.hMean, 1), f2(g.gMean, 1), g.worst >= 0 ? SCORE_ITEMS.at(g.worst).label : "－", `${f2(g.vitG)}（${g.nG}本）／${f2(g.vitB)}（${g.nB}本）`, g.test && g.test.p != null ? `${pWord(g.test)} p=${pFmt(g.test.p)}` : pWord(g.test)]))}
+      <p class="small muted">「（少数）」は調査済みが3本未満の樹種です。平均の比較は参考程度にしてください。</p>
+      ${A.sitesC.length > 1 ? `<h4>樹種×調査地（活力度の平均と本数）</h4>${anTable(["樹種", ...A.sitesC.map(siteShort)], A.species.map((g) => [g.sp, ...A.sitesC.map((st) => g.bySite[st].n ? `${f2(g.bySite[st].m)}（${g.bySite[st].n}本）` : "－")]))}` : ""}
       <div class="btnrow" style="margin:10px 0"><button class="btn line" data-an="mapvit">${ic("mapview")}地図で活力度を色分けする</button></div>${anNote}`;
   }
   function anGaikyoHTML(A) {
@@ -2215,6 +2228,7 @@ window.Store = (function () {
       "・概況調査と活力度の関係はスピアマンの順位相関係数ρ（-1〜1）。調査区が4つ以上で計算します。",
       "・植生の類似度：Sørensen＝2×共通種数÷(2つの種数の合計)、Jaccard＝共通種数÷(どちらかに出た種数)。1に近いほど似ています。",
       "・組成表の並べ替えは、被度を％（r=0.1、+=0.5、1=5、2=17.5、3=37.5、4=62.5、5=87.5）に換えた相反平均法です。",
+      "・樹種ごとの結果は、調査済みが3本未満の樹種は参考程度にしてください。",
       "・本数・調査区数が少ないと、検定や相関の結果ははっきり出にくくなります。数字だけで判断せず、現地の状況と合わせて読んでください。"].forEach((t, i) => n0.set(i, 0, t, i === 0 ? 4 : 0));
     // 地上部
     const s1 = bk.add("地上部_活力度集計").width([26, 10, 10, 10, ...VCLS.map(() => 9), 12, 12]);
@@ -2230,6 +2244,15 @@ window.Store = (function () {
     const s3 = bk.add("地上部_項目別").width([30, ...gsN.map(() => 16)]);
     s3.set(0, 0, "項目別の平均（赤は、その調査区で最も評価が悪い項目）", 4);
     tbl(s3, 2, ["項目", ...gsN.map((g) => g.label)], SCORE_ITEMS.map((it, i) => [it.label, ...gsN.map((g) => nb(g.itemMeans.at(i)))]), (i, j) => j > 0 && worstIdx.at(j - 1) === i);
+    // 樹種ごと
+    const sS = bk.add("地上部_樹種別").width([18, 9, 9, 11, 9, ...VCLS.map(() => 9), 12, 12, 26, 11, 11, 9, 9, 11, 34]);
+    r = await img(sS, chartStack(A.species, "活力度の判定の内訳（樹種ごと）"), 0, 0);
+    tbl(sS, r, ["樹種", "調査済み", "全本数", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)", "最も悪い項目", "良好区 平均", "不良区 平均", "良好区 本数", "不良区 本数", "p値", "判定"],
+      A.species.map((g) => [g.sp, g.n, g.nAll, nb(g.vitMean), nb(g.vitSd), ...VCLS.map((c) => g.counts[c]), nb(g.hMean, 1), nb(g.gMean, 1), g.worst >= 0 ? SCORE_ITEMS.at(g.worst).label : "", nb(g.vitG), nb(g.vitB), g.nG, g.nB, g.test && g.test.p != null ? (g.test.p < 0.001 ? "<0.001" : nb(g.test.p, 3)) : "", pWord(g.test)]),
+      (i, j) => j === 5 + VCLS.length + 7 && A.species.at(i).test && A.species.at(i).test.p != null && A.species.at(i).test.p < 0.05);
+    if (A.sitesC.length > 1) { const sX = bk.add("地上部_樹種×調査地").width([18, ...A.sitesC.flatMap(() => [11, 8])]);
+      sX.set(0, 0, "樹種×調査地：活力度の平均と本数", 4);
+      tbl(sX, 2, ["樹種", ...A.sitesC.flatMap((st) => [`${siteShort(st)} 平均`, "本数"])], A.species.map((g) => [g.sp, ...A.sitesC.flatMap((st) => [nb(g.bySite[st].m), g.bySite[st].n || ""])])); }
     // 概況
     const s4 = bk.add("概況_調査区比較").width([26, 12, 12, 10, 12, 12, 12, 30, 12, 8]);
     tbl(s4, 0, ["調査区", "相対光量子束密度(%)", "樹木間隔 平均(m)", "下枝高(m)", "枯れ下がり高さ(m)", "枯れの状態", "地形", "実施した管理", "活力度 平均（地上部）", "地上部の本数"], A.gk.map((g) => [g.label, nb(g.light, 1), nb(g.spacing), nb(g.lowH, 1), nb(g.deadH, 1), g.deadState, g.landform, g.mgmt, nb(g.vitMean), g.n]));
