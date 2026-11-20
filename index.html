@@ -467,7 +467,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.23.0（2026-11-20）",   // 更新したら sw.js の VERSION も変える
+  version: "1.24.0（2026-11-20）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -2582,125 +2582,150 @@ window.Store = (function () {
   }
 
   // =====================================================================
-  // 自由分析（BIのように、絞り込み・分け方・指標を選んでグラフと表を作る）
-  //   比較：調査地全体／調査地ごとの「良好・不良」を基本に、樹種やタイプでも分けて比べる
-  //   環境×樹木特性：調査区ごとの環境条件（横軸）と、木の状態（縦軸）の関係
-  //   グラフや行をタップすると、その中身に絞り込む（ドリルダウン）
+  // 自由分析（BIのように、横軸・縦軸・色分け・絞り込みを自由に選んでグラフと表を作る）
+  //   横軸が「区分」（調査地・樹種など）→ 棒グラフ／箱ひげ／本数／判定の内訳
+  //   横軸が「数値」（植栽密度・形状比など）→ 散布図（回帰線つきも選べる）
+  //   グラフをタップすると、その中に絞り込む（ドリルダウン）
   // =====================================================================
-  const BI_DIMS = {
-    none: { label: "分けない", get: () => "全体" },
-    site: { label: "調査地", get: (x) => siteShort(x.site), filt: "site", val: (x) => x.site },
-    growth: { label: "生育区分（良好・不良）", get: (x) => x.growth || "区分なし", filt: "growth", val: (x) => x.growth },
-    forest: { label: "樹林の種類", get: (x) => x.forest || "不明", filt: "forest", val: (x) => x.forest },
-    type: { label: "樹木のタイプ", get: (x) => x.type, filt: "type", val: (x) => x.type },
-    sp: { label: "樹種", get: (x) => x.t.sp || "樹種不明", filt: "sp", val: (x) => x.t.sp || "" },
-    zone: { label: "調査区", get: (x) => `${siteShort(x.site)} ${zLabel(x.z)}` },
-  };
-  const BI_NEXT = { site: "sp", type: "sp", forest: "sp", zone: "sp", sp: "none", growth: "sp", none: "none" };
   const BAD = new Set(VCLS.slice(2));   // 「不良」以上
-  const BI_METRICS = [
-    { k: "vit", label: "活力度（0良好〜4不良）", get: (x) => x.vit, fix4: true },
-    { k: "bad", label: "不良以上の割合（%）", get: (x) => x.vit == null ? null : BAD.has(x.cls) ? 100 : 0, pct: true },
-    ...SCORE_ITEMS.map((it, i) => ({ k: "v" + (i + 1), label: it.label + "（0〜4）", get: (x) => x.items.at(i), fix4: true })),
-    { k: "h", label: "樹高（m）", get: (x) => x.h }, { k: "g", label: "幹周（cm）", get: (x) => x.g }, { k: "w", label: "枝張り 平均（m）", get: (x) => x.w }, { k: "sl", label: "形状比", get: (x) => x.sl },
+  const ord = (list) => (a, b) => (list.indexOf(a) < 0 ? 99 : list.indexOf(a)) - (list.indexOf(b) < 0 ? 99 : list.indexOf(b)) || String(a).localeCompare(String(b), "ja", { numeric: true });
+  const envGet = (k) => (x) => x.env ? x.env[k] : null;
+  // 使える項目。cat＝区分、num＝数値。zone:true は調査区単位でも使える（環境条件・調査区の属性）
+  const BI_FIELDS = [
+    { k: "all", label: "全体（分けない）", cat: true, zone: true, get: () => "全体" },
+    { k: "site", label: "調査地", cat: true, zone: true, get: (x) => siteShort(x.site), drill: (x, B) => { B.f.site = x.site; return "sp"; } },
+    { k: "growth", label: "生育区分（良好・不良）", cat: true, zone: true, get: (x) => x.growth || "区分なし", order: ["良好", "不良"], drill: (x, B) => { B.f.growth = x.growth; return "sp"; } },
+    { k: "forest", label: "樹林の種類", cat: true, zone: true, get: (x) => x.forest || "不明", drill: (x, B) => { B.f.forest = x.forest; return "sp"; } },
+    { k: "zone", label: "調査区", cat: true, zone: true, get: (x) => `${siteShort(x.site)} ${zLabel(x.z)}`, drill: (x, B) => { B.f.site = x.site; B.f.growth = x.growth; B.f.forest = x.forest; return "sp"; } },
+    { k: "type", label: "樹木のタイプ", cat: true, get: (x) => x.type, order: ["常緑広葉樹", "落葉広葉樹", "針葉樹"], drill: (x, B) => { B.f.type = x.type; return "sp"; } },
+    { k: "sp", label: "樹種", cat: true, get: (x) => x.t.sp || "樹種不明", drill: (x, B) => { B.f.sp = x.t.sp || ""; return "all"; } },
+    { k: "cls", label: "活力度の判定", cat: true, get: (x) => x.cls || "未調査", order: [...VCLS, "未調査"], drill: (x, B) => { B.f.cls = x.cls || "未調査"; return "sp"; } },
+    { k: "slc", label: "形状比の区分", cat: true, get: (x) => slClass(x.sl) || "計算できない", order: SLC.map((c) => c[1]), drill: (x, B) => { B.f.slc = slClass(x.sl) || "計算できない"; return "sp"; } },
+    { k: "landform", label: "地形（概況）", cat: true, zone: true, get: (x) => (x.env && x.env.landform) || "未入力", drill: (x, B) => { B.f.landform = (x.env && x.env.landform) || "未入力"; return "zone"; } },
+    { k: "erosion", label: "のり面浸食（概況）", cat: true, zone: true, get: (x) => (x.env && x.env.erosion) || "未入力", drill: (x, B) => { B.f.erosion = (x.env && x.env.erosion) || "未入力"; return "zone"; } },
+    { k: "deadState", label: "枯れの状態（概況）", cat: true, zone: true, get: (x) => (x.env && x.env.deadState) || "未入力", drill: (x, B) => { B.f.deadState = (x.env && x.env.deadState) || "未入力"; return "zone"; } },
+    { k: "vit", label: "活力度（0良好〜4不良）", num: true, fix4: true, get: (x) => x.vit },
+    { k: "bad", label: "不良以上の割合（%）", num: true, pct: true, get: (x) => x.vit == null ? null : BAD.has(x.cls) ? 100 : 0 },
+    ...SCORE_ITEMS.map((it, i) => ({ k: "v" + (i + 1), label: it.label + "（0〜4）", num: true, fix4: true, get: (x) => x.items.at(i) })),
+    { k: "h", label: "樹高（m）", num: true, get: (x) => x.h }, { k: "g", label: "幹周（cm）", num: true, get: (x) => x.g }, { k: "w", label: "枝張り（m）", num: true, get: (x) => x.w }, { k: "sl", label: "形状比", num: true, get: (x) => x.sl },
+    ...ENV_VARS.filter((v) => !["vitMean", "slMean", "hMean"].includes(v.k)).map((v) => ({ k: "e_" + v.k, label: v.label + "（概況）", num: true, zone: true, env: true, get: envGet(v.k) })),
   ];
-  const BI_ENV = ENV_VARS.filter((v) => !["vitMean", "slMean", "hMean"].includes(v.k));
-  const biM = (k) => BI_METRICS.find((m) => m.k === k) || BI_METRICS[0];
+  const BF = (k) => BI_FIELDS.find((f) => f.k === k) || BI_FIELDS[0];
   const BI_COL = { "良好": "#43a047", "不良": "#e53935" }, BI_PAL = ["#1565c0", "#ef6c00", "#6a1b9a", "#00838f", "#827717", "#ad1457", "#4e342e", "#37474f", "#2e7d32", "#c62828"];
-  const biColor = (v, i) => BI_COL[v] || TYPE_COL[v] || BI_PAL[i % BI_PAL.length];
-  function biDefaults() { return { mode: "compare", site: "", growth: "", forest: "", type: "", sp: "", metric: "vit", split: "site", color: "growth", chart: "bar", xEnv: "density", unit: "zone", zone: "", listZone: "" }; }
-  function biFilter(rows, B) {
-    return rows.filter((x) => (!B.site || x.site === B.site) && (!B.growth || x.growth === B.growth) && (!B.forest || x.forest === B.forest) && (!B.type || x.type === B.type) && (!B.sp || (x.t.sp || "") === B.sp) && (!B.zone || x.site + "|" + x.z === B.zone));
-  }
+  const biColor = (v, i) => BI_COL[v] || TYPE_COL[v] || VCOL[v] || BI_PAL[i % BI_PAL.length];
+  function biDefaults() { return { x: "site", y: "vit", color: "growth", unit: "tree", chart: "bar", f: {}, listZone: "" }; }
   const q = (a, p) => { const s = a.slice().sort((x, y) => x - y); if (!s.length) return null; const i = (s.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i); return s.at(lo) + (s.at(hi) - s.at(lo)) * (i - lo); };
-  function biStats(xs, M) { const v = xs.map(M.get).filter((y) => y != null && isFinite(y)); return { n: v.length, vals: v, m: avg(v), sd: sdv(v), med: q(v, .5), q1: q(v, .25), q3: q(v, .75), min: v.length ? Math.min(...v) : null, max: v.length ? Math.max(...v) : null, counts: Object.fromEntries(VCLS.map((c) => [c, xs.filter((x) => x.cls === c).length])) }; }
-  const sortVals = (dim, vals) => dim === "growth" ? vals.sort((a, b) => ["良好", "不良"].indexOf(a) - ["良好", "不良"].indexOf(b)) : dim === "type" ? vals.sort((a, b) => ["常緑広葉樹", "落葉広葉樹", "針葉樹"].indexOf(a) - ["常緑広葉樹", "落葉広葉樹", "針葉樹"].indexOf(b)) : vals.sort((a, b) => a.localeCompare(b, "ja", { numeric: true }));
-  // ---------- 比較（グループ別） ----------
-  function biCompare(rows, B) {
-    const M = biM(B.metric), R0 = BI_DIMS[B.split], C0 = BI_DIMS[B.color];
-    let rv = sortVals(B.split, [...new Set(rows.map(R0.get))]);
-    if (B.split === "sp") rv.sort((a, b) => rows.filter((x) => R0.get(x) === b).length - rows.filter((x) => R0.get(x) === a).length);
-    const cv = sortVals(B.color, [...new Set(rows.map(C0.get))]);
-    const out = rv.map((r) => { const rx = rows.filter((x) => R0.get(x) === r); return { r, n: rx.length, cells: cv.map((c) => ({ c, ...biStats(rx.filter((x) => C0.get(x) === c), M) })) }; });
-    if (B.color === "growth") { out.forEach((o) => { const G = o.cells.find((x) => x.c === "良好"), Bd = o.cells.find((x) => x.c === "不良"); o.test = G && Bd ? mwu(G.vals, Bd.vals) : null; }); const ad = holm(out.map((o) => o.test ? o.test.p : null)); out.forEach((o, i) => { o.pAdj = ad.at(i); }); }
-    return { M, rv, cv, out };
+  function biStats(xs, F) { const v = xs.map(F.get).filter((y) => y != null && isFinite(y)); return { n: v.length, cnt: xs.length, vals: v, m: avg(v), sd: sdv(v), med: q(v, .5), q1: q(v, .25), q3: q(v, .75), min: v.length ? Math.min(...v) : null, max: v.length ? Math.max(...v) : null, counts: Object.fromEntries(VCLS.map((c) => [c, xs.filter((x) => x.cls === c).length])) }; }
+  // 絞り込み（どの区分の項目でも絞り込める）
+  function biFilter(rows, B) { const fs = Object.entries(B.f).filter(([, v]) => v != null && v !== ""); return rows.filter((x) => fs.every(([k, v]) => k === "site" ? x.site === v : k === "growth" ? x.growth === v : k === "forest" ? x.forest === v : k === "type" ? x.type === v : k === "sp" ? (x.t.sp || "") === v : BF(k).get(x) === v)); }
+  // 調査区ごとにまとめた行（数値は平均、環境条件はその調査区の値）
+  function biZoneRows(rows) {
+    const m = new Map(); for (const x of rows) { const k = x.site + "|" + x.z; if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+    return [...m.entries()].map(([k, xs]) => { const a = xs.at(0), o = { zoneKey: k, site: a.site, z: a.z, growth: a.growth, forest: a.forest, env: a.env, n: xs.length, t: { sp: "" }, items: [], cls: null, type: "" };
+      o.agg = Object.fromEntries(BI_FIELDS.filter((f) => f.num && !f.env).map((f) => [f.k, avg(xs.map(f.get))])); return o; });
   }
-  function biCompareChart(C, B) {
-    const { M, cv, out } = C; if (!out.length) return "";
-    const stack = B.chart === "stack" && M.k === "vit", W = 440, L = 100, R0 = 50, bh = stack ? 14 : 12, gap = 12, rowH = cv.length * (bh + 3) + gap, top = 70 + (cv.length > 1 ? 18 : 0), H = top + out.length * rowH + 34;
-    const vals = out.flatMap((o) => o.cells.flatMap((c) => B.chart === "box" ? [c.min, c.max] : [c.m != null && c.sd != null ? c.m + c.sd : c.m])).filter((v) => v != null);
-    const xmax = stack ? 100 : M.fix4 ? 4 : M.pct ? 100 : Math.max(1e-9, ...vals) * 1.08, X = (v) => L + (W - L - R0) * Math.max(0, v) / xmax;
-    let s = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' width='${W}' height='${H}' ${SVGF} font-size='12'><rect width='${W}' height='${H}' fill='#fff'/><text x='12' y='24' font-size='15' font-weight='700' fill='#17241b'>${xe2(stack ? "活力度の判定の内訳" : M.label)}</text><text x='12' y='42' font-size='11.5' fill='#444'>${xe2(`${BI_DIMS[B.split].label}ごと${B.color !== "none" ? `・${BI_DIMS[B.color].label}で色分け` : ""}${stack ? "" : B.chart === "box" ? "（箱＝中央の半分、線＝最小〜最大、縦線＝中央値）" : "（棒＝平均、線＝標準偏差）"}`)}</text><text x='12' y='58' font-size='11' fill='#1a73e8'>行の名前をタップすると、その中に絞り込みます</text>`;
-    if (cv.length > 1 && !stack) cv.forEach((c, i) => { s += `<rect x='${12 + i * 84}' y='66' width='10' height='10' fill='${biColor(c, i)}'/><text x='${26 + i * 84}' y='75' font-size='11' fill='#444'>${xe2(c.length > 6 ? c.slice(0, 6) + "…" : c)}</text>`; });
-    if (stack) VCLS.forEach((c, i) => { s += `<rect x='${12 + i * 84}' y='66' width='10' height='10' fill='${VCOL[c]}'/><text x='${26 + i * 84}' y='75' font-size='11' fill='#444'>${xe2(c)}</text>`; });
-    if (!stack) for (let k = 0; k <= 4; k++) { const v = xmax * k / 4; s += `<line x1='${X(v)}' x2='${X(v)}' y1='${top - 4}' y2='${H - 30}' stroke='#eef1ee'/><text x='${X(v)}' y='${H - 16}' text-anchor='middle' font-size='10.5' fill='#666'>${f2(v, xmax > 20 ? 0 : 1)}</text>`; }
+  const fget = (F, unit) => unit === "zone" && F.num && !F.env ? (x) => x.agg[F.k] : F.get;
+  const usable = (F, unit) => unit !== "zone" || F.zone || (F.num && !F.env);
+  // ---------- 区分×数値：棒・箱ひげ・本数・判定の内訳 ----------
+  function biCat(rows, B) {
+    const XF = BF(B.x), YF = { ...BF(B.y), get: fget(BF(B.y), B.unit) }, CF = BF(B.color), xg = XF.get, cg = CF.get;
+    const sortV = (F, vals) => F.order ? vals.sort(ord(F.order)) : vals.sort((a, b) => String(a).localeCompare(String(b), "ja", { numeric: true }));
+    let xv = sortV(XF, [...new Set(rows.map(xg))]); if (XF.k === "sp") xv.sort((a, b) => rows.filter((x) => xg(x) === b).length - rows.filter((x) => xg(x) === a).length);
+    const cv = B.color === "all" ? ["全体"] : sortV(CF, [...new Set(rows.map(cg))]);
+    const out = xv.map((r) => { const rx = rows.filter((x) => xg(x) === r); return { r, rx, cells: cv.map((c) => ({ c, ...biStats(B.color === "all" ? rx : rx.filter((x) => cg(x) === c), YF) })) }; });
+    if (B.color === "growth") { out.forEach((o) => { const G = o.cells.find((x) => x.c === "良好"), Bd = o.cells.find((x) => x.c === "不良"); o.test = G && Bd ? mwu(G.vals, Bd.vals) : null; }); const ad = holm(out.map((o) => o.test ? o.test.p : null)); out.forEach((o, i) => { o.pAdj = ad.at(i); }); }
+    let overall = null;
+    if (B.color === "all" || B.color === B.x) { const gs = out.map((o) => ({ label: o.r, vals: o.cells.flatMap((c) => c.vals) })).filter((g) => g.vals.length >= 3);
+      if (gs.length === 2) overall = { kind: "U検定", label: `${gs.at(0).label} と ${gs.at(1).label}`, ...mwu(gs.at(0).vals, gs.at(1).vals) }; else if (gs.length >= 3) { const k = kruskal(gs); if (k) overall = { kind: "クラスカル・ウォリス検定", label: `${gs.length}群`, p: k.p }; } }
+    return { XF, YF, CF, xv, cv, out, overall };
+  }
+  function biCatChart(C, B) {
+    const { YF, cv, out } = C; if (!out.length) return "";
+    const mode = B.chart === "stack" ? "stack" : B.chart === "count" ? "count" : B.chart === "box" ? "box" : "bar";
+    const W = 440, L = 104, R0 = 54, bh = 12, gap = 12, rowH = cv.length * (bh + 3) + gap, legend = mode === "stack" ? VCLS : cv.length > 1 ? cv : [], top = 64 + (legend.length ? 18 : 0), H = top + out.length * rowH + 34;
+    const vals = out.flatMap((o) => o.cells.flatMap((c) => mode === "box" ? [c.min, c.max] : mode === "count" ? [c.cnt] : [c.m != null && c.sd != null ? c.m + c.sd : c.m])).filter((v) => v != null);
+    const xmax = mode === "stack" ? 100 : mode === "count" ? Math.max(1, ...vals) * 1.08 : YF.fix4 ? 4 : YF.pct ? 100 : Math.max(1e-9, ...vals) * 1.08, X = (v) => L + (W - L - R0) * Math.max(0, v) / xmax;
+    const title = mode === "stack" ? "活力度の判定の内訳" : mode === "count" ? "本数" : YF.label;
+    let s = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' width='${W}' height='${H}' ${SVGF} font-size='12'><rect width='${W}' height='${H}' fill='#fff'/><text x='12' y='24' font-size='15' font-weight='700' fill='#17241b'>${xe2(title)}</text><text x='12' y='41' font-size='11.5' fill='#444'>${xe2(`${C.XF.label}ごと${B.color !== "all" ? `・${C.CF.label}で色分け` : ""}${mode === "box" ? "（箱＝中央の半分・線＝最小〜最大・縦線＝中央値）" : mode === "bar" ? "（棒＝平均・線＝標準偏差）" : ""}`)}</text><text x='12' y='57' font-size='11' fill='#1a73e8'>行の名前をタップすると、その中に絞り込みます</text>`;
+    legend.forEach((c, i) => { s += `<rect x='${12 + i * 84}' y='${top - 20}' width='10' height='10' fill='${biColor(c, i)}'/><text x='${26 + i * 84}' y='${top - 11}' font-size='11' fill='#444'>${xe2(String(c).length > 6 ? String(c).slice(0, 6) + "…" : c)}</text>`; });
+    if (mode !== "stack") for (let k = 0; k <= 4; k++) { const v = xmax * k / 4; s += `<line x1='${X(v)}' x2='${X(v)}' y1='${top - 4}' y2='${H - 30}' stroke='#eef1ee'/><text x='${X(v)}' y='${H - 16}' text-anchor='middle' font-size='10.5' fill='#666'>${f2(v, xmax > 20 || mode === "count" ? 0 : 1)}</text>`; }
     out.forEach((o, i) => { const y0 = top + i * rowH;
-      s += `<g data-bi-row='${xe2(o.r)}' style='cursor:pointer'><rect x='0' y='${y0 - 2}' width='${W}' height='${rowH - gap + 4}' fill='${i % 2 ? "#fafcfa" : "#fff"}'/><text x='${L - 8}' y='${y0 + (rowH - gap) / 2 + 4}' text-anchor='end' fill='#1a73e8' font-weight='600'>${xe2(o.r.length > 9 ? o.r.slice(0, 9) + "…" : o.r)}</text>`;
+      s += `<g data-bi-row='${xe2(o.r)}' style='cursor:pointer'><rect x='0' y='${y0 - 2}' width='${W}' height='${rowH - gap + 4}' fill='${i % 2 ? "#fafcfa" : "#fff"}'/><text x='${L - 8}' y='${y0 + (rowH - gap) / 2 + 4}' text-anchor='end' fill='#1a73e8' font-weight='600'>${xe2(String(o.r).length > 8 ? String(o.r).slice(0, 8) + "…" : o.r)}</text>`;
       o.cells.forEach((c, j) => { const y = y0 + j * (bh + 3), col = biColor(c.c, j);
-        if (!c.n) { s += `<text x='${L + 4}' y='${y + bh - 2}' font-size='10' fill='#aaa'>データなし</text>`; return; }
-        if (stack) { let x = L; const tot = VCLS.reduce((p, k) => p + c.counts[k], 0) || 1; VCLS.forEach((k) => { const w = (W - L - R0) * c.counts[k] / tot; if (w > 0) { s += `<rect x='${x}' y='${y}' width='${w}' height='${bh}' fill='${VCOL[k]}'/>`; if (w > 16) s += `<text x='${x + w / 2}' y='${y + bh - 3}' text-anchor='middle' font-size='9.5' fill='#fff'>${c.counts[k]}</text>`; x += w; } }); }
-        else if (B.chart === "box") { s += `<line x1='${X(c.min)}' x2='${X(c.max)}' y1='${y + bh / 2}' y2='${y + bh / 2}' stroke='${col}'/><rect x='${X(c.q1)}' y='${y}' width='${Math.max(2, X(c.q3) - X(c.q1))}' height='${bh}' fill='${col}' fill-opacity='.35' stroke='${col}'/><line x1='${X(c.med)}' x2='${X(c.med)}' y1='${y - 1}' y2='${y + bh + 1}' stroke='#17241b' stroke-width='2'/>`; }
-        else { s += `<rect x='${L}' y='${y}' width='${Math.max(1, X(c.m) - L)}' height='${bh}' fill='${col}' fill-opacity='.85'/>`; if (c.sd != null) s += `<line x1='${X(c.m - c.sd)}' x2='${X(c.m + c.sd)}' y1='${y + bh / 2}' y2='${y + bh / 2}' stroke='#333'/>`; }
-        s += `<text x='${W - R0 + 4}' y='${y + bh - 2}' font-size='10' fill='#444'>${stack ? "" : f2(B.chart === "box" ? c.med : c.m, M.pct || xmax > 20 ? 0 : 2)}${stack ? c.n : ""}<tspan fill='#999'> n${c.n}</tspan></text>`; });
+        if (!c.cnt) { s += `<text x='${L + 4}' y='${y + bh - 2}' font-size='10' fill='#aaa'>なし</text>`; return; }
+        if (mode === "stack") { let x = L; const tot = VCLS.reduce((p, k) => p + c.counts[k], 0); if (!tot) { s += `<text x='${L + 4}' y='${y + bh - 2}' font-size='10' fill='#aaa'>活力度なし</text>`; return; } VCLS.forEach((k) => { const w = (W - L - R0) * c.counts[k] / tot; if (w > 0) { s += `<rect x='${x}' y='${y}' width='${w}' height='${bh}' fill='${VCOL[k]}'/>`; if (w > 16) s += `<text x='${x + w / 2}' y='${y + bh - 2.5}' text-anchor='middle' font-size='9.5' fill='#fff'>${c.counts[k]}</text>`; x += w; } }); s += `<text x='${W - R0 + 4}' y='${y + bh - 2}' font-size='10' fill='#444'>${tot}本</text>`; }
+        else if (mode === "count") { s += `<rect x='${L}' y='${y}' width='${Math.max(1, X(c.cnt) - L)}' height='${bh}' fill='${col}' fill-opacity='.85'/><text x='${W - R0 + 4}' y='${y + bh - 2}' font-size='10' fill='#444'>${c.cnt}本</text>`; }
+        else if (!c.n) s += `<text x='${L + 4}' y='${y + bh - 2}' font-size='10' fill='#aaa'>値なし</text>`;
+        else { if (mode === "box") s += `<line x1='${X(c.min)}' x2='${X(c.max)}' y1='${y + bh / 2}' y2='${y + bh / 2}' stroke='${col}'/><rect x='${X(c.q1)}' y='${y}' width='${Math.max(2, X(c.q3) - X(c.q1))}' height='${bh}' fill='${col}' fill-opacity='.35' stroke='${col}'/><line x1='${X(c.med)}' x2='${X(c.med)}' y1='${y - 1}' y2='${y + bh + 1}' stroke='#17241b' stroke-width='2'/>`;
+          else { s += `<rect x='${L}' y='${y}' width='${Math.max(1, X(c.m) - L)}' height='${bh}' fill='${col}' fill-opacity='.85'/>`; if (c.sd != null) s += `<line x1='${X(c.m - c.sd)}' x2='${X(c.m + c.sd)}' y1='${y + bh / 2}' y2='${y + bh / 2}' stroke='#333'/>`; }
+          s += `<text x='${W - R0 + 4}' y='${y + bh - 2}' font-size='10' fill='#444'>${f2(mode === "box" ? c.med : c.m, YF.pct || xmax > 20 ? 0 : 2)}<tspan fill='#999'> n${c.n}</tspan></text>`; } });
       s += `</g>`; });
     return s + `</svg>`;
   }
-  // ---------- 環境条件 × 樹木特性 ----------
-  function biEnv(rows, A, B) {
-    const M = biM(B.metric), X = BI_ENV.find((v) => v.k === B.xEnv) || BI_ENV[0], env = new Map(A.gk.map((g) => [g.site + "|" + g.z, g]));
-    let pts;
-    if (B.unit === "tree") pts = rows.map((x) => { const g = env.get(x.site + "|" + x.z), y = M.get(x); return g && g[X.k] != null && y != null ? { x: g[X.k], y, c: BI_DIMS[B.color].get(x), zone: x.site + "|" + x.z, label: "" } : null; }).filter(Boolean);
-    else { const zs = [...new Set(rows.map((x) => x.site + "|" + x.z))]; pts = zs.map((k) => { const g = env.get(k), xs = rows.filter((x) => x.site + "|" + x.z === k), st = biStats(xs, M); return g && g[X.k] != null && st.n ? { x: g[X.k], y: st.m, n: st.n, c: B.color === "none" ? "全体" : BI_DIMS[B.color].get(xs.at(0)), zone: k, label: g.short } : null; }).filter(Boolean); }
-    const groups = [...new Set(pts.map((p) => p.c))].map((c) => ({ c, n: pts.filter((p) => p.c === c).length, rho: spearman(pts.filter((p) => p.c === c).map((p) => p.x), pts.filter((p) => p.c === c).map((p) => p.y)) }));
-    return { M, X, pts, rho: spearman(pts.map((p) => p.x), pts.map((p) => p.y)), groups };
+  // ---------- 数値×数値：散布図 ----------
+  function biNum(rows, B) {
+    const XF = { ...BF(B.x), get: fget(BF(B.x), B.unit) }, YF = { ...BF(B.y), get: fget(BF(B.y), B.unit) }, CF = BF(B.color);
+    const pts = rows.map((x) => { const a = XF.get(x), b = YF.get(x); return a != null && b != null && isFinite(a) && isFinite(b) ? { x: a, y: b, c: B.color === "all" ? "全体" : CF.get(x), zone: x.zoneKey || x.site + "|" + x.z, label: B.unit === "zone" ? `${siteShort(x.site)} ${zLabel(x.z).replace("区", "")}` : "" } : null; }).filter(Boolean);
+    const groups = [...new Set(pts.map((p) => p.c))].map((c) => { const ps = pts.filter((p) => p.c === c); return { c, n: ps.length, rho: spearman(ps.map((p) => p.x), ps.map((p) => p.y)) }; });
+    const n = pts.length, mx = avg(pts.map((p) => p.x)), my = avg(pts.map((p) => p.y)), sxx = pts.reduce((s, p) => s + (p.x - mx) ** 2, 0), slope = n > 2 && sxx ? pts.reduce((s, p) => s + (p.x - mx) * (p.y - my), 0) / sxx : null;
+    return { XF, YF, CF, pts, groups, rho: spearman(pts.map((p) => p.x), pts.map((p) => p.y)), line: slope == null ? null : { slope, icpt: my - slope * mx } };
   }
-  function biEnvChart(E, B) {
-    const { M, X: XV, pts } = E; if (pts.length < 2) return "";
+  function biNumChart(E, B) {
+    const { XF, YF, pts } = E; if (pts.length < 2) return "";
     const W = 440, H = 400, L = 48, R0 = 12, top = 96, Bm = 56, cv = [...new Set(pts.map((p) => p.c))];
-    const rg = (a, f) => { if (f) return [0, M.pct ? 100 : 4]; let lo = Math.min(...a), hi = Math.max(...a); if (lo === hi) { lo -= 1; hi += 1; } const pd = (hi - lo) * .08; return [lo - pd, hi + pd]; };
-    const [x0, x1] = rg(pts.map((p) => p.x)), [y0, y1] = rg(pts.map((p) => p.y), M.fix4 || M.pct), Xp = (v) => L + (W - L - R0) * (v - x0) / (x1 - x0), Yp = (v) => top + (H - top - Bm) * (1 - (v - y0) / (y1 - y0));
-    let s = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' width='${W}' height='${H}' ${SVGF} font-size='12'><rect width='${W}' height='${H}' fill='#fff'/><text x='12' y='24' font-size='15' font-weight='700' fill='#17241b'>${xe2(XV.label.replace(/\(.*\)/, ""))} と ${xe2(M.label.replace(/（.*）/, ""))}</text><text x='12' y='42' font-size='12' fill='#444'>順位相関係数 ρ＝${f2(E.rho)}：${xe2(rhoWord(E.rho))}・${pts.length}${B.unit === "tree" ? "本" : "調査区"}</text><text x='12' y='58' font-size='11' fill='#1a73e8'>点をタップすると、その調査区の木の一覧を表示します</text>`;
-    cv.forEach((c, i) => { s += `<circle cx='${18 + i * 96}' cy='72' r='5' fill='${biColor(c, i)}'/><text x='${27 + i * 96}' y='76' font-size='11' fill='#444'>${xe2(c.length > 6 ? c.slice(0, 6) + "…" : c)}</text>`; });
+    const rg = (a, F) => { if (F.fix4) return [0, 4]; if (F.pct) return [0, 100]; let lo = Math.min(...a), hi = Math.max(...a); if (lo === hi) { lo -= 1; hi += 1; } const pd = (hi - lo) * .08; return [lo - pd, hi + pd]; };
+    const [x0, x1] = rg(pts.map((p) => p.x), XF), [y0, y1] = rg(pts.map((p) => p.y), YF), Xp = (v) => L + (W - L - R0) * (v - x0) / (x1 - x0), Yp = (v) => top + (H - top - Bm) * (1 - (v - y0) / (y1 - y0));
+    const nm = (F) => F.label.replace(/（.*）$/, "");
+    let s = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' width='${W}' height='${H}' ${SVGF} font-size='12'><rect width='${W}' height='${H}' fill='#fff'/><text x='12' y='24' font-size='15' font-weight='700' fill='#17241b'>${xe2(nm(XF))} と ${xe2(nm(YF))}</text><text x='12' y='41' font-size='12' fill='#444'>順位相関係数 ρ＝${f2(E.rho)}：${xe2(rhoWord(E.rho))}・${pts.length}${B.unit === "zone" ? "調査区" : "本"}</text><text x='12' y='57' font-size='11' fill='#1a73e8'>点をタップすると、その調査区の木の一覧を表示します</text>`;
+    cv.forEach((c, i) => { s += `<circle cx='${18 + i * 84}' cy='72' r='5' fill='${biColor(c, i)}'/><text x='${27 + i * 84}' y='76' font-size='11' fill='#444'>${xe2(String(c).length > 6 ? String(c).slice(0, 6) + "…" : c)}</text>`; });
     for (let k = 0; k <= 4; k++) { const v = y0 + (y1 - y0) * k / 4, x = x0 + (x1 - x0) * k / 4; s += `<line x1='${L}' x2='${W - R0}' y1='${Yp(v)}' y2='${Yp(v)}' stroke='#e3e8e4'/><text x='${L - 6}' y='${Yp(v) + 4}' text-anchor='end' fill='#666'>${f2(v, Math.abs(y1 - y0) > 20 ? 0 : 1)}</text><text x='${Xp(x)}' y='${H - Bm + 18}' text-anchor='middle' fill='#666'>${f2(x, Math.abs(x1 - x0) > 20 ? 0 : 1)}</text>`; }
-    s += `<text x='${(L + W - R0) / 2}' y='${H - 14}' text-anchor='middle' fill='#17241b'>${xe2(XV.label)}</text><text x='${L}' y='${top - 6}' font-size='11' fill='#666'>${xe2(M.label)}${M.fix4 ? "（上ほど不良）" : ""}</text>`;
+    s += `<text x='${(L + W - R0) / 2}' y='${H - 14}' text-anchor='middle' fill='#17241b'>${xe2(XF.label)}</text><text x='${L}' y='${top - 6}' font-size='11' fill='#666'>${xe2(YF.label)}${YF.fix4 ? "・上ほど不良" : ""}</text>`;
+    if (B.chart === "line" && E.line) { const a = Math.max(x0, Math.min(...pts.map((p) => p.x))), b = Math.min(x1, Math.max(...pts.map((p) => p.x))); s += `<line x1='${Xp(a)}' y1='${Yp(E.line.icpt + E.line.slope * a)}' x2='${Xp(b)}' y2='${Yp(E.line.icpt + E.line.slope * b)}' stroke='#555' stroke-width='1.5' stroke-dasharray='6 4'/>`; }
     const placed = [];
     pts.forEach((p) => { const px = Xp(p.x), py = Yp(p.y), col = biColor(p.c, cv.indexOf(p.c));
-      s += `<circle data-bi-zone='${xe2(p.zone)}' style='cursor:pointer' cx='${px}' cy='${py}' r='${B.unit === "tree" ? 4.5 : 7}' fill='${col}' fill-opacity='.8' stroke='#fff'/>`;
-      if (p.label) { const right = px > W - 130, tw = p.label.length * 11 + 4, lx = right ? px - 10 - tw : px + 10; let ly = py + 4; while (placed.some((r) => lx < r[2] && lx + tw > r[0] && Math.abs(ly - r[1]) < 13)) ly += 13; placed.push([lx, ly, lx + tw]); s += `<text x='${right ? px - 10 : px + 10}' y='${ly}' text-anchor='${right ? "end" : "start"}' font-size='11' fill='#333'>${xe2(p.label)}</text>`; } });
+      s += `<circle data-bi-zone='${xe2(p.zone)}' style='cursor:pointer' cx='${px}' cy='${py}' r='${B.unit === "zone" ? 7 : 4.5}' fill='${col}' fill-opacity='.8' stroke='#fff'/>`;
+      if (p.label) { const right = px > W - 120, tw = p.label.length * 11 + 4, lx = right ? px - 10 - tw : px + 10; let ly = py + 4; while (placed.some((r) => lx < r[2] && lx + tw > r[0] && Math.abs(ly - r[1]) < 13)) ly += 13; placed.push([lx, ly, lx + tw]); s += `<text x='${right ? px - 10 : px + 10}' y='${ly}' text-anchor='${right ? "end" : "start"}' font-size='11' fill='#333'>${xe2(p.label)}</text>`; } });
     return s + `</svg>`;
   }
   // ---------- 画面 ----------
-  const sel = (id, val, opts) => `<select class="inp" data-bi="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(val) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
-  function biHTML(rowsAll, A, B) {
-    const rows = biFilter(rowsAll, B), uniq = (f) => [...new Set(rowsAll.map(f).filter(Boolean))];
-    const dimOpts = (skip) => Object.entries(BI_DIMS).filter(([k]) => !skip.includes(k)).map(([k, d]) => [k, d.label]);
-    const chips = [["site", B.site && siteShort(B.site)], ["growth", B.growth], ["forest", B.forest], ["type", B.type], ["sp", B.sp], ["zone", B.zone && (A.gk.find((g) => g.site + "|" + g.z === B.zone) || {}).label]].filter(([, v]) => v);
+  const sel = (id, val, opts) => `<select class="inp" data-bi="${id}">${opts.map((o) => o.group ? `<optgroup label="${esc(o.group)}">${o.items.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(val) ? " selected" : ""}>${esc(l)}</option>`).join("")}</optgroup>` : `<option value="${esc(o[0])}"${String(o[0]) === String(val) ? " selected" : ""}>${esc(o[1])}</option>`).join("")}</select>`;
+  const grp = (label, fs) => ({ group: label, items: fs.map((f) => [f.k, f.label]) });
+  function biHTML(treeRows, A, B) {
+    const filtered = biFilter(treeRows, B), rows = B.unit === "zone" ? biZoneRows(filtered) : filtered;
+    const XF = BF(B.x), isCat = XF.cat, uniq = (f) => [...new Set(treeRows.map(f).filter(Boolean))];
+    const ok = (f) => usable(f, B.unit);
+    const catF = BI_FIELDS.filter((f) => f.cat && ok(f)), numTree = BI_FIELDS.filter((f) => f.num && !f.env && ok(f)), numEnv = BI_FIELDS.filter((f) => f.num && f.env && ok(f));
+    const xOpts = [grp("区分（棒グラフ）", catF), grp("木の数値（散布図）", numTree), grp("環境条件（散布図）", numEnv)], yOpts = [grp("木の数値", numTree), grp("環境条件", numEnv)];
+    const chartOpts = isCat ? [["bar", "平均（棒）"], ["box", "ばらつき（箱ひげ）"], ["count", "本数"], ["stack", "活力度の判定の内訳"]] : [["scatter", "散布図"], ["line", "散布図＋回帰線"]];
+    const fLabels = { site: (v) => siteShort(v) }, chips = Object.entries(B.f).filter(([, v]) => v != null && v !== "").map(([k, v]) => [k, `${BF(k).label.replace(/（.*）/, "")}：${(fLabels[k] || ((x) => x))(v)}`]);
     let body = "", table = "";
-    if (B.mode === "compare") {
-      const C = biCompare(rows, B);
-      body = biCompareChart(C, B) || `<p class="empty">条件に合う木がありません。</p>`;
-      table = anTable([BI_DIMS[B.split].label, ...C.cv.flatMap((c) => [`${c} 本数`, `${c} ${B.chart === "box" ? "中央値" : "平均"}`]), ...(B.color === "growth" ? ["p値", "補正p", "効果量δ", "判定"] : [])],
-        C.out.map((o) => [o.r, ...o.cells.flatMap((c) => [c.n, f2(B.chart === "box" ? c.med : c.m, C.M.pct ? 0 : 2)]), ...(B.color === "growth" ? [o.test ? pFmt(o.test.p) : "－", pFmt(o.pAdj), o.test && o.test.delta != null ? `${f2(o.test.delta)}（${deltaWord(o.test.delta)}）` : "－", o.test && o.test.p != null ? pWord2(o.pAdj) : "本数不足"] : [])]),
-        B.color === "growth" ? (i, j) => j === 1 + C.cv.length * 2 + 1 && C.out.at(i).pAdj != null && C.out.at(i).pAdj < 0.05 : null);
-      if (B.color === "growth") table += `<p class="small muted">良好と不良の比較はU検定（各3本以上）。補正p＝この表の行数で補正（ホルム法）。効果量δが負なら良好の方が値が小さい（活力度なら良好の方が良い）。</p>`;
+    if (isCat) {
+      const C = biCat(rows, B);
+      body = biCatChart(C, B) || `<p class="empty">条件に合うデータがありません。</p>`;
+      const show = B.chart === "box" ? "中央値" : "平均", cnt = B.chart === "count" || B.chart === "stack";
+      table = anTable([XF.label, ...C.cv.flatMap((c) => cnt ? [`${c} 本数`] : [`${c} 本数`, `${c} ${show}`]), ...(B.color === "growth" && !cnt ? ["p値", "補正p", "効果量δ", "判定"] : [])],
+        C.out.map((o) => [o.r, ...o.cells.flatMap((c) => cnt ? [c.cnt] : [c.n, f2(B.chart === "box" ? c.med : c.m, C.YF.pct ? 0 : 2)]), ...(B.color === "growth" && !cnt ? [o.test ? pFmt(o.test.p) : "－", pFmt(o.pAdj), o.test && o.test.delta != null ? `${f2(o.test.delta)}（${deltaWord(o.test.delta)}）` : "－", o.test && o.test.p != null ? pWord2(o.pAdj) : "本数不足"] : [])]));
+      if (B.color === "growth" && !cnt) table += `<p class="small muted">各行で良好と不良を比べたU検定（各3本以上）。補正p＝この表の行数で補正（ホルム法）。δが負なら良好の方が値が小さい。</p>`;
+      if (C.overall && !cnt) table += `<p class="small"><b>${esc(C.XF.label)}どうしの比較</b>（${esc(C.overall.label)}・${esc(C.overall.kind)}）：p＝${pFmt(C.overall.p)} → ${pWord2(C.overall.p)}${C.overall.kind === "クラスカル・ウォリス検定" ? "（参考）" : ""}</p>`;
     } else {
-      const E = biEnv(rows, A, B);
-      body = biEnvChart(E, B) || `<p class="empty">環境条件と木の値の両方がある${B.unit === "tree" ? "木" : "調査区"}が2つ以上必要です。</p>`;
-      table = anTable([BI_DIMS[B.color].label, "点の数", "順位相関係数ρ", "関係の強さ"], [["すべて", E.pts.length, f2(E.rho), rhoWord(E.rho)], ...E.groups.map((g) => [g.c, g.n, f2(g.rho), rhoWord(g.rho)])]);
-      table += `<p class="small muted">${B.unit === "tree" ? "「1本ずつ」は、同じ調査区の木に同じ環境の値を当てはめているため、点の数ほどの確かさはありません。傾向を見る目安にしてください。" : "1点＝1調査区（絞り込んだ木の平均）。調査区が少ないため傾向の目安です。"}</p>`;
+      const E = biNum(rows, B);
+      body = biNumChart(E, B) || `<p class="empty">両方の値がある${B.unit === "zone" ? "調査区" : "木"}が2つ以上必要です。</p>`;
+      table = anTable([B.color === "all" ? "" : E.CF.label, "点の数", "順位相関係数ρ", "関係の強さ"], [["すべて", E.pts.length, f2(E.rho), rhoWord(E.rho)], ...(B.color === "all" ? [] : E.groups.map((g) => [g.c, g.n, f2(g.rho), rhoWord(g.rho)]))]);
+      if (B.chart === "line" && E.line) table += `<p class="small">回帰線：${esc(E.YF.label)} ＝ ${f2(E.line.slope, 3)} × ${esc(E.XF.label)} ＋ ${f2(E.line.icpt, 2)}（全体）</p>`;
+      if (B.unit === "tree" && (E.XF.env || E.YF.env)) table += `<p class="small muted">環境条件は調査区ごとの値なので、同じ調査区の木には同じ値が入ります。点の数ほどの確かさはないため、傾向の目安にしてください（「調査区ごと」にすると1調査区1点になります）。</p>`;
     }
-    const lz = B.listZone, list = rows.filter((x) => (!lz || x.site + "|" + x.z === lz) && (x.vit != null || x.h != null)).sort((a, b) => (b.vit ?? -1) - (a.vit ?? -1)).slice(0, 300);
+    const lz = B.listZone, list = filtered.filter((x) => (!lz || x.site + "|" + x.z === lz) && (x.vit != null || x.h != null)).sort((a, b) => (b.vit ?? -1) - (a.vit ?? -1)).slice(0, 300);
     return `<div class="bi-ctl">
-        <div class="seg">${[["compare", "比較（グループ別）"], ["env", "環境×樹木特性"]].map(([k, l]) => `<button data-bi-mode="${k}"${B.mode === k ? ' class="on"' : ""}>${l}</button>`).join("")}</div>
         <div class="bi-grid">
-          <label>調査地${sel("site", B.site, [["", "全体"], ...uniq((x) => x.site).map((v) => [v, siteShort(v)])])}</label>
-          <label>生育区分${sel("growth", B.growth, [["", "すべて"], ["良好", "良好"], ["不良", "不良"]])}</label>
-          <label>樹林の種類${sel("forest", B.forest, [["", "すべて"], ...CFG.forestTypes.map((v) => [v, v])])}</label>
-          <label>タイプ${sel("type", B.type, [["", "すべて"], ["常緑広葉樹", "常緑広葉樹"], ["落葉広葉樹", "落葉広葉樹"], ["針葉樹", "針葉樹"]])}</label>
-          <label>樹種${sel("sp", B.sp, [["", "すべて"], ...uniq((x) => x.t.sp).sort((a, b) => a.localeCompare(b, "ja")).map((v) => [v, v])])}</label>
-          <label>${B.mode === "env" ? "縦軸（木の状態）" : "指標"}${sel("metric", B.metric, BI_METRICS.map((m) => [m.k, m.label]))}</label>
-          ${B.mode === "compare" ? `<label>行の分け方${sel("split", B.split, dimOpts(["growth"]))}</label><label>色分け${sel("color", B.color, dimOpts(["zone"]))}</label><label>グラフ${sel("chart", B.chart, [["bar", "平均（棒）"], ["box", "ばらつき（箱ひげ）"], ["stack", "判定の内訳（活力度）"]])}</label>`
-            : `<label>横軸（環境条件）${sel("xEnv", B.xEnv, BI_ENV.map((v) => [v.k, v.label]))}</label><label>点の単位${sel("unit", B.unit, [["zone", "調査区ごと"], ["tree", "1本ずつ"]])}</label><label>色分け${sel("color", B.color, dimOpts(["zone"]))}</label>`}
+          <label>横軸${sel("x", B.x, xOpts)}</label>
+          <label>縦軸${sel("y", B.y, yOpts)}</label>
+          <label>色分け${sel("color", B.color, catF.map((f) => [f.k, f.k === "all" ? "なし" : f.label]))}</label>
+          <label>グラフ${sel("chart", B.chart, chartOpts)}</label>
+          <label>単位${sel("unit", B.unit, [["tree", "1本ずつ"], ["zone", "調査区ごと（平均）"]])}</label>
+          <label>調査地で絞り込み${sel("f.site", B.f.site || "", [["", "全体"], ...uniq((x) => x.site).map((v) => [v, siteShort(v)])])}</label>
+          <label>生育区分${sel("f.growth", B.f.growth || "", [["", "すべて"], ["良好", "良好"], ["不良", "不良"]])}</label>
+          <label>タイプ${sel("f.type", B.f.type || "", [["", "すべて"], ["常緑広葉樹", "常緑広葉樹"], ["落葉広葉樹", "落葉広葉樹"], ["針葉樹", "針葉樹"]])}</label>
+          <label>樹種${sel("f.sp", B.f.sp || "", [["", "すべて"], ...uniq((x) => x.t.sp).sort((a, b) => a.localeCompare(b, "ja")).map((v) => [v, v])])}</label>
         </div>
         ${chips.length ? `<div class="bi-chips">絞り込み中：${chips.map(([k, v]) => `<button data-bi-clear="${k}">${esc(v)} ×</button>`).join("")}<button data-bi-clear="all">すべて解除</button></div>` : ""}
       </div>
@@ -2710,34 +2735,36 @@ window.Store = (function () {
         <div class="antbl"><table><thead><tr><th>調査地</th><th>No.</th><th>樹種</th><th>区分</th><th>活力度</th><th>判定</th><th>樹高</th><th>幹周</th><th>形状比</th></tr></thead><tbody>${list.map((x) => `<tr data-bi-tree="${esc(x.t.key)}" style="cursor:pointer"><td>${esc(siteShort(x.site))}</td><td>${esc(x.t.tno)}</td><td>${esc(x.t.sp)}</td><td>${esc(`${forestShort(x.forest)}・${x.growth}`)}</td><td>${f2(x.vit, 1)}</td><td>${esc(x.cls || "")}</td><td>${f2(x.h, 1)}</td><td>${f2(x.g, 1)}</td><td>${f2(x.sl, 1)}</td></tr>`).join("")}</tbody></table></div>
         <p class="small muted">行をタップすると、その木の調査画面を開きます。</p></details>`;
   }
-  // 自由分析のタブを組み立てて、操作を受け付ける
   function biMount(host, ctx) {
-    const B = S.bi = S.bi || biDefaults();
-    const A = ctx.A || (ctx.A = analyze("", S.year, true)), rows = A.trees;
-    const render = () => { host.innerHTML = biHTML(rows, A, B); paintIcons(host); };
-    host.onchange = (e) => { const k = e.target.dataset && e.target.dataset.bi; if (!k) return; B[k] = e.target.value; if (k === "metric" && B.chart === "stack" && e.target.value !== "vit") B.chart = "bar"; render(); };
+    const B = S.bi = S.bi && S.bi.f ? S.bi : biDefaults();
+    const A = ctx.A || (ctx.A = analyze("", S.year, true)), env = new Map(A.gk.map((g) => [g.site + "|" + g.z, g]));
+    const rows = A.trees.map((x) => ({ ...x, env: env.get(x.site + "|" + x.z) || null }));
+    const fix = () => { // 選んだ組み合わせに合わせて、使えない設定を直す
+      if (!usable(BF(B.x), B.unit)) B.x = "site"; if (!usable(BF(B.y), B.unit) || !BF(B.y).num) B.y = "vit"; if (!usable(BF(B.color), B.unit)) B.color = "growth";
+      const cat = BF(B.x).cat; if (cat && !["bar", "box", "count", "stack"].includes(B.chart)) B.chart = "bar"; if (!cat && !["scatter", "line"].includes(B.chart)) B.chart = "scatter"; };
+    const render = () => { fix(); host.innerHTML = biHTML(rows, A, B); paintIcons(host); };
+    host.onchange = (e) => { const k = e.target.dataset && e.target.dataset.bi; if (!k) return; if (k.startsWith("f.")) B.f[k.slice(2)] = e.target.value; else B[k] = e.target.value; render(); };
     host.onclick = async (e) => {
-      const md = e.target.closest("[data-bi-mode]"); if (md) { B.mode = md.dataset.biMode; if (B.mode === "env" && B.color === "growth") B.color = "growth"; render(); return; }
-      const cl = e.target.closest("[data-bi-clear]"); if (cl) { if (cl.dataset.biClear === "all") Object.assign(B, { site: "", growth: "", forest: "", type: "", sp: "", zone: "", listZone: "" }); else B[cl.dataset.biClear] = ""; if (!B.site && B.split === "sp" && !B.sp) B.split = "site"; render(); return; }
-      const rw = e.target.closest("[data-bi-row]"); if (rw) { const d = BI_DIMS[B.split], v = rw.dataset.biRow, x = rows.find((y) => d.get(y) === v);
-        if (B.split === "zone" && x) { B.site = x.site; B.growth = x.growth; B.forest = x.forest; } else if (d.filt && x) B[d.filt] = d.val(x);
-        B.split = BI_NEXT[B.split] || "none"; render(); host.scrollIntoView({ block: "start" }); return; }
+      const cl = e.target.closest("[data-bi-clear]"); if (cl) { if (cl.dataset.biClear === "all") { B.f = {}; B.listZone = ""; } else delete B.f[cl.dataset.biClear]; render(); return; }
+      const rw = e.target.closest("[data-bi-row]"); if (rw) { const XF = BF(B.x), v = rw.dataset.biRow, x = biFilter(rows, B).find((y) => XF.get(y) === v); if (x && XF.drill) { B.x = XF.drill(x, B); if (B.x === B.color && B.x !== "all") B.x = "all"; render(); host.scrollTop = 0; } return; }
       const zp = e.target.closest("[data-bi-zone]"); if (zp) { B.listZone = zp.dataset.biZone; render(); const l = $(".bi-list", host); if (l) { l.open = true; l.scrollIntoView({ block: "start" }); } return; }
       const tr = e.target.closest("[data-bi-tree]"); if (tr) { const i = TIDX.get(tr.dataset.biTree); if (i != null) { ctx.close(); openChijo(i); } return; }
       const act = e.target.closest("[data-bi-act]"); if (!act) return;
       if (act.dataset.biAct === "unlist") { B.listZone = ""; render(); return; }
       const svg = ($(".bi-out", host).innerHTML || "").trim(); if (!svg.startsWith("<svg")) { toast("グラフがありません"); return; }
       const name = `自由分析_${fyShort(S.year)}_${stamp()}`;
-      if (act.dataset.biAct === "png") { const p = await svgToPng(svg); if (p) await saveBlob(new Blob([p.buf], { type: "image/png" }), name + ".png"); }
-      else { const blob = await busy("Excelを作成しています…", async () => { const bk = XW.book(), sh = bk.add("自由分析").width([22, 12, 12, 12, 12, 12, 12, 12, 12, 12]);
-        sh.set(0, 0, `${CFG.appTitle} 自由分析（${fyLabel(S.year)}）`, 4); sh.set(1, 0, `条件：${[B.mode === "compare" ? "比較" : "環境×樹木特性", B.site ? siteShort(B.site) : "全体", B.growth, B.forest, B.type, B.sp].filter(Boolean).join("／")}　指標：${biM(B.metric).label}`, 0);
+      if (act.dataset.biAct === "png") { const p = await svgToPng(svg); if (p) await saveBlob(new Blob([p.buf], { type: "image/png" }), name + ".png"); return; }
+      const blob = await busy("Excelを作成しています…", async () => { const bk = XW.book(), sh = bk.add("自由分析").width([22, 12, 12, 12, 12, 12, 12, 12, 12, 12]);
+        sh.set(0, 0, `${CFG.appTitle} 自由分析（${fyLabel(S.year)}）`, 4);
+        sh.set(1, 0, `横軸：${BF(B.x).label}　縦軸：${BF(B.y).label}　色分け：${B.color === "all" ? "なし" : BF(B.color).label}　単位：${B.unit === "zone" ? "調査区ごと" : "1本ずつ"}　絞り込み：${Object.entries(B.f).filter(([, v]) => v).map(([k, v]) => `${BF(k).label}=${k === "site" ? siteShort(v) : v}`).join("、") || "なし"}`, 0);
         const p = await svgToPng(svg); if (p) (sh.images = []).push({ buf: p.buf, w: p.w, h: p.h, r: 3, c: 0 });
         const t = $(".antbl table", host), r0 = 4 + (p ? Math.ceil(p.h / 20) + 1 : 0);
         if (t) [...t.rows].forEach((tr2, i) => [...tr2.cells].forEach((td, j) => { const v = td.textContent; sh.set(r0 + i, j, /^-?\d+(\.\d+)?$/.test(v) ? +v : v, i === 0 ? 1 : 2); }));
-        const lst = rows.length && biFilter(rows, B), tl = bk.add("対象の木").width([16, 8, 14, 12, 9, 12, 9, 9, 9]);
+        const tl = bk.add("対象の木").width([16, 8, 14, 12, 9, 12, 9, 9, 9]);
         tl.row(0, ["調査地", "樹木番号", "樹種", "区分", "活力度", "判定", "樹高(m)", "幹周(cm)", "形状比"], 1);
-        (lst || []).forEach((x, i) => tl.row(i + 1, [x.site, x.t.tno, x.t.sp, `${forestShort(x.forest)}・${x.growth}`, x.vit ?? "", x.cls || "", x.h ?? "", x.g ?? "", x.sl ?? ""], 2));
-        return bk.blob(); }); if (blob) await saveBlob(blob, name + ".xlsx"); }
+        biFilter(rows, B).forEach((x, i) => tl.row(i + 1, [x.site, x.t.tno, x.t.sp, `${forestShort(x.forest)}・${x.growth}`, x.vit ?? "", x.cls || "", x.h ?? "", x.g ?? "", x.sl ?? ""], 2));
+        return bk.blob(); });
+      if (blob) await saveBlob(blob, name + ".xlsx");
     };
     render();
   }
