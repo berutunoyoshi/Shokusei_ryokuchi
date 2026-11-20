@@ -455,7 +455,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.18.0（2026-11-20）",   // 更新したら sw.js の VERSION も変える
+  version: "1.19.0（2026-11-20）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -2017,16 +2017,59 @@ window.Store = (function () {
   function ranks(vals) { const idx = vals.map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]), r = new Array(vals.length); let i = 0; while (i < idx.length) { let j = i; while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++; const rr = (i + j) / 2 + 1; for (let k = i; k <= j; k++) r[idx[k][1]] = rr; i = j + 1; } return r; }
   function normCdf(z) { const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-(z * z) / 2); return z >= 0 ? (1 + y) / 2 : (1 - y) / 2; }
   // マン・ホイットニーのU検定（2群の差。順位で比べるので、0〜4の評価にも使える）。各群3本以上で計算
+  //   合計40本以下は正確検定（すべての並び方を数える）、それより多いときは正規近似（同順位の補正つき）
+  //   効果量はクリフのδ（−1〜1）：(良好区の値＞不良区の値 の組の割合)−(＜ の割合)。活力度は大きいほど不良なので、δが負＝良好区の方が良い
+  function cliffDelta(a, b) { let g = 0, l = 0; for (const x of a) for (const y of b) { if (x > y) g++; else if (x < y) l++; } return a.length && b.length ? (g - l) / (a.length * b.length) : null; }
+  const deltaWord = (d) => d == null ? "－" : Math.abs(d) < 0.147 ? "ほぼなし" : Math.abs(d) < 0.33 ? "小" : Math.abs(d) < 0.474 ? "中" : "大";
+  function exactRankSumP(n1, r) {
+    const N = r.length, v = r.map((x) => Math.round(x * 2)), maxS = v.reduce((p, q) => p + q, 0);
+    const dp = Array.from({ length: n1 + 1 }, () => new Float64Array(maxS + 1)); dp[0][0] = 1;
+    for (const x of v) for (let k = n1; k >= 1; k--) { const a = dp[k], b = dp[k - 1]; for (let t = maxS; t >= x; t--) if (b[t - x]) a[t] += b[t - x]; }
+    // 両側のp値＝2×（片側のうち小さい方）。統計ソフト（R・SciPy）と同じ考え方
+    const obs = v.slice(0, n1).reduce((p, q) => p + q, 0), dist = dp[n1]; let tot = 0, lo = 0, hi = 0;
+    for (let t = 0; t <= maxS; t++) { if (!dist[t]) continue; tot += dist[t]; if (t <= obs) lo += dist[t]; if (t >= obs) hi += dist[t]; }
+    return tot ? Math.min(1, 2 * Math.min(lo, hi) / tot) : 1;
+  }
   function mwu(a, b) {
     a = a.filter((v) => v != null); b = b.filter((v) => v != null); const n1 = a.length, n2 = b.length;
-    if (n1 < 3 || n2 < 3) return { n1, n2, p: null };
-    const all = a.concat(b), r = ranks(all), R1 = r.slice(0, n1).reduce((p, q) => p + q, 0), U = R1 - n1 * (n1 + 1) / 2, N = n1 + n2;
+    if (n1 < 3 || n2 < 3) return { n1, n2, p: null, delta: cliffDelta(a, b) };
+    const all = a.concat(b), r = ranks(all), R1 = r.slice(0, n1).reduce((p, q) => p + q, 0), U = R1 - n1 * (n1 + 1) / 2, N = n1 + n2, delta = cliffDelta(a, b);
+    if (N <= 40) return { n1, n2, U, p: exactRankSumP(n1, r), exact: true, delta };
     const ties = {}; all.forEach((v) => { ties[v] = (ties[v] || 0) + 1; }); const tc = Object.values(ties).reduce((p, t) => p + (t ** 3 - t), 0);
-    const sd = Math.sqrt(n1 * n2 / 12 * ((N + 1) - tc / (N * (N - 1)))); if (!sd) return { n1, n2, U, p: 1 };
-    const z = (Math.abs(U - n1 * n2 / 2) - 0.5) / sd; return { n1, n2, U, z, p: Math.min(1, 2 * (1 - normCdf(Math.max(0, z)))) };
+    const sd = Math.sqrt(n1 * n2 / 12 * ((N + 1) - tc / (N * (N - 1)))); if (!sd) return { n1, n2, U, p: 1, delta };
+    const z = (Math.abs(U - n1 * n2 / 2) - 0.5) / sd; return { n1, n2, U, z, p: Math.min(1, 2 * (1 - normCdf(Math.max(0, z)))), delta };
   }
+  // ホルム法：同じ表の中で何回も検定するときの補正（補正後のp値を返す）
+  function holm(ps) {
+    const idx = ps.map((p, i) => [p, i]).filter(([p]) => p != null).sort((a, b) => a[0] - b[0]), m = idx.length, out = ps.map(() => null); let run = 0;
+    idx.forEach(([p, i], k) => { run = Math.max(run, Math.min(1, (m - k) * p)); out[i] = run; });
+    return out;
+  }
+  // クラスカル・ウォリス検定（3群以上）と、スティール・ドゥワス法（すべての組の多重比較）
+  function lgamma(x) { const c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5]; let y = x, t = x + 5.5; t -= (x + 0.5) * Math.log(t); let ser = 1.000000000190015; for (const v of c) ser += v / ++y; return -t + Math.log(2.5066282746310005 * ser / x); }
+  function gammaP(a, x) { if (x <= 0) return 0; if (x < a + 1) { let sum = 1 / a, del = sum, ap = a; for (let n = 0; n < 300; n++) { ap++; del *= x / ap; sum += del; if (Math.abs(del) < Math.abs(sum) * 1e-12) break; } return sum * Math.exp(-x + a * Math.log(x) - lgamma(a)); }
+    let b = x + 1 - a, c = 1e300, d = 1 / b, h = d; for (let i = 1; i < 300; i++) { const an = -i * (i - a); b += 2; d = an * d + b; if (Math.abs(d) < 1e-300) d = 1e-300; c = b + an / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; const del = d * c; h *= del; if (Math.abs(del - 1) < 1e-12) break; } return 1 - Math.exp(-x + a * Math.log(x) - lgamma(a)) * h; }
+  const chi2p = (x, df) => 1 - gammaP(df / 2, x / 2);
+  const phi = (z) => Math.exp(-z * z / 2) / Math.sqrt(2 * Math.PI);
+  function ptukeyInf(q, k) { const n = 800, lo = -8, hi = 8, h = (hi - lo) / n; let s = 0; for (let i = 0; i <= n; i++) { const z = lo + i * h, f = phi(z) * Math.max(0, normCdf(z) - normCdf(z - q)) ** (k - 1), w = i === 0 || i === n ? 1 : i % 2 ? 4 : 2; s += w * f; } return Math.min(1, k * s * h / 3); }
+  function kruskal(groups) {
+    const gs = groups.filter((g) => g.vals.length >= 3); if (gs.length < 3) return null;
+    const all = gs.flatMap((g) => g.vals), N = all.length, r = ranks(all); let off = 0, H = 0;
+    gs.forEach((g) => { const R = r.slice(off, off + g.vals.length).reduce((p, q) => p + q, 0); H += R * R / g.vals.length; off += g.vals.length; });
+    H = 12 / (N * (N + 1)) * H - 3 * (N + 1);
+    const ties = {}; all.forEach((v) => { ties[v] = (ties[v] || 0) + 1; }); const C = 1 - Object.values(ties).reduce((p, t) => p + (t ** 3 - t), 0) / (N ** 3 - N); if (C > 0) H /= C;
+    const df = gs.length - 1, k = gs.length, pairs = [];
+    for (let i = 0; i < k; i++) for (let j = i + 1; j < k; j++) {
+      const A = gs.at(i).vals, B = gs.at(j).vals, nij = A.length + B.length, rr = ranks(A.concat(B)), Ri = rr.slice(0, A.length).reduce((p, q) => p + q, 0), E = A.length * (nij + 1) / 2;
+      const V = A.length * B.length / (nij * (nij - 1)) * (rr.reduce((p, q) => p + q * q, 0) - nij * (nij + 1) ** 2 / 4), t = V > 0 ? (Ri - E) / Math.sqrt(V) : 0;
+      pairs.push({ a: gs.at(i).label, b: gs.at(j).label, ma: avg(A), mb: avg(B), p: 1 - ptukeyInf(Math.abs(t) * Math.SQRT2, k), delta: cliffDelta(A, B) });
+    }
+    return { groups: gs.map((g) => ({ label: g.label, n: g.vals.length, m: avg(g.vals), med: median(g.vals) })), H, df, p: chi2p(H, df), pairs };
+  }
+  const median = (xs) => { const a = xs.filter((v) => v != null).sort((p, q) => p - q); if (!a.length) return null; const m = Math.floor(a.length / 2); return a.length % 2 ? a.at(m) : (a.at(m - 1) + a.at(m)) / 2; };
   const pFmt = (p) => p == null ? "－" : p < 0.001 ? "<0.001" : (Math.round(p * 1000) / 1000).toFixed(3);
-  const pWord = (t) => !t || t.p == null ? "本数が少なく判定できません（各3本以上必要）" : t.p < 0.01 ? "差がある可能性が非常に高い（p<0.01）" : t.p < 0.05 ? "差がある可能性が高い（p<0.05）" : "はっきりした差は見られない";
+  const pWord = (t, p = t && t.p) => !t || p == null ? "本数が少なく判定できません（各3本以上必要）" : p < 0.01 ? "差がある可能性が非常に高い" : p < 0.05 ? "差がある可能性が高い" : "はっきりした差は見られない";
+  const pWord2 = (p) => p == null ? "－" : p < 0.01 ? "差がある可能性が非常に高い" : p < 0.05 ? "差がある可能性が高い" : "はっきりした差は見られない";
   function spearman(xs, ys) { const pr = xs.map((x, i) => [x, ys[i]]).filter(([x, y]) => x != null && y != null); if (pr.length < 4) return null; const rx = ranks(pr.map((p) => p[0])), ry = ranks(pr.map((p) => p[1])), mx = avg(rx), my = avg(ry); let s = 0, sx = 0, sy = 0; rx.forEach((v, i) => { s += (v - mx) * (ry[i] - my); sx += (v - mx) ** 2; sy += (ry[i] - my) ** 2; }); return sx && sy ? s / Math.sqrt(sx * sy) : null; }
   const rhoWord = (r) => r == null ? "点が少なく計算できません（4点以上必要）" : `${Math.abs(r) < 0.3 ? "関係は弱い" : Math.abs(r) < 0.7 ? "中程度の関係" : "強い関係"}（${r > 0 ? "正" : "負"}の相関）`;
   const COVER_PCT = { r: 0.1, "+": 0.5, "1": 5, "2": 17.5, "3": 37.5, "4": 62.5, "5": 87.5 };
@@ -2052,7 +2095,8 @@ window.Store = (function () {
       const st = (arr, k) => ({ m: avg(arr.map((x) => x[k])), s: sdv(arr.map((x) => x[k])) });
       compare.push({ label, nG: G.length, nB: B.length, vitG: st(G, "vit"), vitB: st(B, "vit"), hG: st(G, "h"), hB: st(B, "h"), gG: st(G, "g"), gB: st(B, "g"), tVit: mwu(G.map((x) => x.vit), B.map((x) => x.vit)), tH: mwu(G.map((x) => x.h), B.map((x) => x.h)), tG: mwu(G.map((x) => x.g), B.map((x) => x.g)) }); };
     for (const s of sitesC) for (const f of CFG.forestTypes) cmp1(`${siteShort(s)} ${f}`, trees.filter((x) => x.site === s && x.forest === f));
-    cmp1("全体", trees);
+    { const ad = holm(compare.map((c) => c.tVit.p)); compare.forEach((c, i) => { c.pAdj = ad.at(i); }); }
+    cmp1("全体", trees); { const c = compare.at(-1); if (c && c.label === "全体") c.pAdj = c.tVit.p; }
     // 樹種ごと
     const worstOf = (means) => { let k = -1, mx = -1; means.forEach((v, i) => { if (v != null && v > mx) { mx = v; k = i; } }); return k; };
     const spMap = new Map();
@@ -2062,6 +2106,14 @@ window.Store = (function () {
         counts: Object.fromEntries(VCLS.map((c) => [c, g.done.filter((x) => x.cls === c).length])), itemMeans: im, worst: worstOf(im), nG: G.length, nB: B.length, vitG: avg(G.map((x) => x.vit)), vitB: avg(B.map((x) => x.vit)), test: mwu(G.map((x) => x.vit), B.map((x) => x.vit)),
         bySite: Object.fromEntries(sitesC.map((st) => { const a = g.done.filter((x) => x.site === st); return [st, { n: a.length, m: avg(a.map((x) => x.vit)) }]; })) }; })
       .sort((a, b) => b.n - a.n || a.sp.localeCompare(b.sp, "ja"));
+    { const ad = holm(species.map((g) => g.test.p)); species.forEach((g, i) => { g.pAdj = ad.at(i); }); }
+    // 3群以上の比較：樹種どうし、調査地どうし（樹林の種類ごと）、調査区どうし（調査地ごと）
+    const vitOf = (arr) => arr.filter((x) => x.vit != null).map((x) => x.vit);
+    const multi = [];
+    const kw = (title, groups) => { const r = kruskal(groups); if (r) multi.push({ title, ...r }); };
+    kw("樹種どうし", species.map((g) => ({ label: g.sp, vals: vitOf(spMap.get(g.sp).done) })));
+    for (const f of CFG.forestTypes) kw(`調査地どうし（${f}）`, sitesC.map((st) => ({ label: siteShort(st), vals: vitOf(trees.filter((x) => x.site === st && x.forest === f)) })));
+    for (const st of sitesC) kw(`調査区どうし（${siteShort(st)}）`, GK.zones.map(([z]) => ({ label: zLabel(z), vals: vitOf(trees.filter((x) => x.site === st && x.z === z)) })));
     // 概況：調査区ごと
     const gk = [];
     for (const s of siteList().filter(inS)) { const r = R.get(recId.gaikyo(s)); if (!r) continue; const a = r.ans;
@@ -2081,7 +2133,7 @@ window.Store = (function () {
       if (gi >= 0 && bi >= 0) { const A = names.at(gi), B = names.at(bi); pairs.push({ label: `${siteShort(s)} ${f}`, good: plots.at(gi).no, bad: plots.at(bi).no, nG: A.size, nB: B.size, common: [...A].filter((n) => B.has(n)), onlyG: [...A].filter((n) => !B.has(n)), onlyB: [...B].filter((n) => !A.has(n)), sor: sor.at(gi).at(bi), jac: jac.at(gi).at(bi) }); }
     }
     const ra = reciprocalAveraging(plots);
-    return { site, groups, compare, species, sitesC, gk, relSp, relLt, plots, sor, jac, pairs, ra, nTrees: trees.length, nDone: trees.filter((x) => x.vit != null).length };
+    return { site, groups, compare, species, multi, sitesC, gk, relSp, relLt, plots, sor, jac, pairs, ra, nTrees: trees.length, nDone: trees.filter((x) => x.vit != null).length };
   }
   // 組成表の並べ替え：相反平均法（似た調査区・一緒に出る種が近くに並ぶ）。被度を％に換えて重みにする
   function reciprocalAveraging(plots) {
@@ -2126,7 +2178,7 @@ window.Store = (function () {
         s += `<rect x='${x}' y='${Y(st.m)}' width='${bw}' height='${Y(0) - Y(st.m)}' fill='${col}' fill-opacity='.85'/><text x='${x + bw / 2}' y='${Y(st.m) - 6}' text-anchor='middle' font-size='11' fill='#17241b'>${f2(st.m, 1)}</text>`;
         if (st.s != null) s += `<line x1='${x + bw / 2}' x2='${x + bw / 2}' y1='${Y(Math.max(0, st.m - st.s))}' y2='${Y(Math.min(4, st.m + st.s))}' stroke='#333'/>`;
         if (Y(0) - Y(st.m) > 16) s += `<text x='${x + bw / 2}' y='${Y(0) - 5}' text-anchor='middle' font-size='10' fill='#fff'>${n}本</text>`; });
-      s += `<text x='${x0 + gw / 2}' y='${H - B + 18}' text-anchor='middle' fill='#17241b'>${xe2(c.label)}</text><text x='${x0 + gw / 2}' y='${H - B + 34}' text-anchor='middle' font-size='11' fill='${c.tVit && c.tVit.p != null && c.tVit.p < 0.05 ? "#c62828" : "#666"}'>${c.tVit && c.tVit.p != null ? "p=" + pFmt(c.tVit.p) : "検定不可"}</text>`; });
+      s += `<text x='${x0 + gw / 2}' y='${H - B + 18}' text-anchor='middle' fill='#17241b'>${xe2(c.label)}</text><text x='${x0 + gw / 2}' y='${H - B + 34}' text-anchor='middle' font-size='11' fill='${c.pAdj != null && c.pAdj < 0.05 ? "#c62828" : "#666"}'>${c.pAdj != null ? "補正p=" + pFmt(c.pAdj) : "検定不可"}</text>`; });
     return s + `</svg>`;
   }
   function chartScatter(pts, xKey, xLab, title, rho) {
@@ -2169,14 +2221,20 @@ window.Store = (function () {
       <h4>活力度の集計（調査区ごと）</h4>${chartStack(A.groups)}
       ${anTable(["調査区", "調査済み", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)"], A.groups.map((g) => [g.label, `${g.n}/${g.nAll}本`, f2(g.vitMean), f2(g.vitSd), ...VCLS.map((c) => `${g.counts[c]}本`), f2(g.hMean, 1), f2(g.gMean, 1)]))}
       <h4>良好区と不良区の比較</h4>${chartCompare(A.compare)}
-      ${anTable(["比較", "本数 良好／不良", "活力度 良好／不良", "検定（活力度）", "樹高 良好／不良(m)", "検定（樹高）", "幹周 良好／不良(cm)", "検定（幹周）"], A.compare.map((c) => [c.label, `${c.nG}／${c.nB}`, `${f2(c.vitG.m)}／${f2(c.vitB.m)}`, pWord(c.tVit) + (c.tVit && c.tVit.p != null ? ` p=${pFmt(c.tVit.p)}` : ""), `${f2(c.hG.m, 1)}／${f2(c.hB.m, 1)}`, c.tH && c.tH.p != null ? `p=${pFmt(c.tH.p)}` : "－", `${f2(c.gG.m, 1)}／${f2(c.gB.m, 1)}`, c.tG && c.tG.p != null ? `p=${pFmt(c.tG.p)}` : "－"]))}
-      <p class="small muted">検定はマン・ホイットニーのU検定（各群3本以上）。活力度は0が良好・4が不良です。</p>
+      ${anTable(["比較", "本数 良好／不良", "活力度 良好／不良", "p値", "補正p（ホルム）", "効果量δ", "判定", "樹高 良好／不良(m)", "p値（樹高）", "幹周 良好／不良(cm)", "p値（幹周）"], A.compare.map((c) => [c.label, `${c.nG}／${c.nB}`, `${f2(c.vitG.m)}／${f2(c.vitB.m)}`, pFmt(c.tVit.p), c.label === "全体" ? "（対象外）" : pFmt(c.pAdj), c.tVit.delta == null ? "－" : `${f2(c.tVit.delta)}（${deltaWord(c.tVit.delta)}）`, c.tVit.p == null ? pWord(c.tVit) : pWord2(c.pAdj), `${f2(c.hG.m, 1)}／${f2(c.hB.m, 1)}`, pFmt(c.tH.p), `${f2(c.gG.m, 1)}／${f2(c.gB.m, 1)}`, pFmt(c.tG.p)]), (i, j) => j === 4 && A.compare.at(i).label !== "全体" && A.compare.at(i).pAdj != null && A.compare.at(i).pAdj < 0.05)}
+      <p class="small muted">検定はマン・ホイットニーのU検定（各群3本以上。合計40本以下は正確検定）。補正p＝同じ表の中の検定回数で補正した値（ホルム法。「全体」は除く）で判定。効果量δは−1〜1で、負は良好区の方が良い（活力度が低い）ことを示し、大きさは0.147未満＝ほぼなし、0.33未満＝小、0.474未満＝中、それ以上＝大。</p>
       <h4>項目別の平均（赤は、その調査区で最も評価が悪い項目）</h4>
       ${anTable(["項目", ...A.groups.filter((g) => g.n).map((g) => g.label)], SCORE_ITEMS.map((it, i) => [it.label, ...A.groups.filter((g) => g.n).map((g) => f2(g.itemMeans.at(i)))]), (i, j) => j > 0 && worst(A.groups.filter((g) => g.n).at(j - 1)) === i)}
       <h4>樹種ごとの結果</h4>${chartStack(A.species, "活力度の判定の内訳（樹種ごと）")}
-      ${anTable(["樹種", "調査済み", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)", "最も悪い項目", "良好区／不良区 平均", "検定（良好区と不良区）"], A.species.map((g) => [g.sp + (g.n < 3 ? "（少数）" : ""), `${g.n}/${g.nAll}本`, f2(g.vitMean), f2(g.vitSd), ...VCLS.map((c) => `${g.counts[c]}本`), f2(g.hMean, 1), f2(g.gMean, 1), g.worst >= 0 ? SCORE_ITEMS.at(g.worst).label : "－", `${f2(g.vitG)}（${g.nG}本）／${f2(g.vitB)}（${g.nB}本）`, g.test && g.test.p != null ? `${pWord(g.test)} p=${pFmt(g.test.p)}` : pWord(g.test)]))}
+      ${anTable(["樹種", "調査済み", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)", "最も悪い項目", "良好区／不良区 平均", "p値", "補正p（ホルム）", "効果量δ", "判定"], A.species.map((g) => [g.sp + (g.n < 3 ? "（少数）" : ""), `${g.n}/${g.nAll}本`, f2(g.vitMean), f2(g.vitSd), ...VCLS.map((c) => `${g.counts[c]}本`), f2(g.hMean, 1), f2(g.gMean, 1), g.worst >= 0 ? SCORE_ITEMS.at(g.worst).label : "－", `${f2(g.vitG)}（${g.nG}本）／${f2(g.vitB)}（${g.nB}本）`, pFmt(g.test.p), pFmt(g.pAdj), g.test.delta == null ? "－" : `${f2(g.test.delta)}（${deltaWord(g.test.delta)}）`, g.test.p == null ? pWord(g.test) : pWord2(g.pAdj)]), (i, j) => j === 4 + VCLS.length + 5 && A.species.at(i).pAdj != null && A.species.at(i).pAdj < 0.05)}
       <p class="small muted">「（少数）」は調査済みが3本未満の樹種です。平均の比較は参考程度にしてください。</p>
       ${A.sitesC.length > 1 ? `<h4>樹種×調査地（活力度の平均と本数）</h4>${anTable(["樹種", ...A.sitesC.map(siteShort)], A.species.map((g) => [g.sp, ...A.sitesC.map((st) => g.bySite[st].n ? `${f2(g.bySite[st].m)}（${g.bySite[st].n}本）` : "－")]))}` : ""}
+      <h4>3群以上の比較（クラスカル・ウォリス検定と多重比較）</h4>
+      ${A.multi.length ? A.multi.map((m) => `<p><b>${esc(m.title)}</b>：H＝${f2(m.H)}（自由度${m.df}）、p＝${pFmt(m.p)} → ${pWord2(m.p)}</p>
+        ${anTable(["群", "本数", "活力度 平均", "中央値"], m.groups.map((g) => [g.label, g.n, f2(g.m), f2(g.med)]))}
+        ${anTable(["組み合わせ", "平均", "p値（スティール・ドゥワス）", "効果量δ", "判定"], m.pairs.map((p) => [`${p.a} − ${p.b}`, `${f2(p.ma)}／${f2(p.mb)}`, pFmt(p.p), `${f2(p.delta)}（${deltaWord(p.delta)}）`, pWord2(p.p)]), (i, j) => j === 2 && m.pairs.at(i).p < 0.05)}`).join("") : `<p class="small muted">3本以上ある群が3つ以上そろうと計算します（樹種どうし・調査地どうし・調査区どうし）。</p>`}
+      <p class="small muted">クラスカル・ウォリス検定で「どこかに差があるか」を、スティール・ドゥワス法で「どの組に差があるか」（多重比較の補正込み）を見ます。</p>
+      <div class="notebox"><b>結果を読むときの注意</b><br>・良好区・不良区は木の状態を見て分けた区分のため、活力度に差が出るのはある意味当然です。検定は「区分と評価が一致しているか」の確認に近く、原因までは示しません。<br>・良好区・不良区が調査地ごとに1か所ずつの場合、差が「良好・不良」によるのか「場所の違い」によるのかは区別できません。報告では「この2か所の比較」として書くのが安全です。</div>
       <div class="btnrow" style="margin:10px 0"><button class="btn line" data-an="mapvit">${ic("mapview")}地図で活力度を色分けする</button></div>${anNote}`;
   }
   function anGaikyoHTML(A) {
@@ -2224,7 +2282,12 @@ window.Store = (function () {
     const n0 = bk.add("はじめに").width([100]); n0.landscape = false;
     [`${CFG.appTitle} 分析結果`, `対象：${site || "すべての調査地"}　作成：${new Date().toLocaleString("ja-JP")}　作成者：${S.name}`, "",
       "・活力度は0（良好）〜4（不良）。各項目の評価の平均を小数1位に四捨五入した値です。",
-      "・良好区と不良区の比較はマン・ホイットニーのU検定（順位による2群の比較）。各群3本以上で計算します。p<0.05 で「差がある可能性が高い」と表示します。",
+      "・良好区と不良区の比較はマン・ホイットニーのU検定（順位による2群の比較）。各群3本以上で計算し、合計40本以下は正確検定、それより多いときは正規近似です。",
+      "・同じ表の中で何回も検定するため、ホルム法で補正したp値（補正p）で判定します（「全体」の行は補正の対象外）。補正p<0.05 で「差がある可能性が高い」、<0.01 で「非常に高い」と表示します。",
+      "・効果量δ（クリフのデルタ、−1〜1）は差の大きさです。負の値は良好区の方が良い（活力度が低い）ことを示します。|δ|が0.147未満＝ほぼなし、0.33未満＝小、0.474未満＝中、それ以上＝大。",
+      "・3群以上（樹種どうし、調査地どうし、調査区どうし）はクラスカル・ウォリス検定で全体の差を見て、スティール・ドゥワス法でどの組に差があるかを見ます（多重比較の補正込み）。",
+      "・良好区・不良区は木の状態を見て分けた区分のため、活力度に差が出るのはある意味当然です。検定は「区分と評価が一致しているか」の確認に近く、原因までは示しません。",
+      "・良好区・不良区が調査地ごとに1か所ずつの場合、差が「良好・不良」によるのか「場所の違い」によるのかは区別できません。報告では「この2か所の比較」として書くのが安全です。",
       "・概況調査と活力度の関係はスピアマンの順位相関係数ρ（-1〜1）。調査区が4つ以上で計算します。",
       "・植生の類似度：Sørensen＝2×共通種数÷(2つの種数の合計)、Jaccard＝共通種数÷(どちらかに出た種数)。1に近いほど似ています。",
       "・組成表の並べ替えは、被度を％（r=0.1、+=0.5、1=5、2=17.5、3=37.5、4=62.5、5=87.5）に換えた相反平均法です。",
@@ -2237,9 +2300,11 @@ window.Store = (function () {
     s1.cols = [26, 9, 9, 11, 9, ...VCLS.map(() => 9), 12, 12];
     const s2 = bk.add("地上部_良好不良比較").width([20, 8, 8, 11, 11, 11, 11, 9, 40, 10, 10, 9, 11, 11, 9]);
     r = await img(s2, chartCompare(A.compare), 0, 0);
-    tbl(s2, r, ["比較", "本数 良好", "本数 不良", "活力度 良好 平均", "活力度 良好 SD", "活力度 不良 平均", "活力度 不良 SD", "p値（活力度）", "判定", "樹高 良好(m)", "樹高 不良(m)", "p値（樹高）", "幹周 良好(cm)", "幹周 不良(cm)", "p値（幹周）"],
-      A.compare.map((c) => [c.label, c.nG, c.nB, nb(c.vitG.m), nb(c.vitG.s), nb(c.vitB.m), nb(c.vitB.s), c.tVit && c.tVit.p != null ? (c.tVit.p < 0.001 ? "<0.001" : nb(c.tVit.p, 3)) : "", pWord(c.tVit), nb(c.hG.m, 1), nb(c.hB.m, 1), c.tH && c.tH.p != null ? (c.tH.p < 0.001 ? "<0.001" : nb(c.tH.p, 3)) : "", nb(c.gG.m, 1), nb(c.gB.m, 1), c.tG && c.tG.p != null ? (c.tG.p < 0.001 ? "<0.001" : nb(c.tG.p, 3)) : ""]),
-      (i, j) => j === 7 && A.compare.at(i).tVit && A.compare.at(i).tVit.p != null && A.compare.at(i).tVit.p < 0.05);
+    const pv = (p) => p == null ? "" : p < 0.001 ? "<0.001" : nb(p, 3);
+    tbl(s2, r, ["比較", "本数 良好", "本数 不良", "活力度 良好 平均", "活力度 良好 SD", "活力度 不良 平均", "活力度 不良 SD", "p値", "補正p（ホルム）", "効果量δ", "効果の大きさ", "判定", "樹高 良好(m)", "樹高 不良(m)", "p値（樹高）", "幹周 良好(cm)", "幹周 不良(cm)", "p値（幹周）"],
+      A.compare.map((c) => [c.label, c.nG, c.nB, nb(c.vitG.m), nb(c.vitG.s), nb(c.vitB.m), nb(c.vitB.s), pv(c.tVit.p), c.label === "全体" ? "対象外" : pv(c.pAdj), nb(c.tVit.delta), deltaWord(c.tVit.delta), c.tVit.p == null ? pWord(c.tVit) : pWord2(c.pAdj), nb(c.hG.m, 1), nb(c.hB.m, 1), pv(c.tH.p), nb(c.gG.m, 1), nb(c.gB.m, 1), pv(c.tG.p)]),
+      (i, j) => j === 8 && A.compare.at(i).label !== "全体" && A.compare.at(i).pAdj != null && A.compare.at(i).pAdj < 0.05);
+    s2.cols = [20, 8, 8, 11, 11, 11, 11, 9, 11, 9, 9, 26, 10, 10, 9, 11, 11, 9];
     const gsN = A.groups.filter((g) => g.n), worstIdx = gsN.map((g) => { let k = -1, mx = -1; g.itemMeans.forEach((v, i) => { if (v != null && v > mx) { mx = v; k = i; } }); return k; });
     const s3 = bk.add("地上部_項目別").width([30, ...gsN.map(() => 16)]);
     s3.set(0, 0, "項目別の平均（赤は、その調査区で最も評価が悪い項目）", 4);
@@ -2247,9 +2312,18 @@ window.Store = (function () {
     // 樹種ごと
     const sS = bk.add("地上部_樹種別").width([18, 9, 9, 11, 9, ...VCLS.map(() => 9), 12, 12, 26, 11, 11, 9, 9, 11, 34]);
     r = await img(sS, chartStack(A.species, "活力度の判定の内訳（樹種ごと）"), 0, 0);
-    tbl(sS, r, ["樹種", "調査済み", "全本数", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)", "最も悪い項目", "良好区 平均", "不良区 平均", "良好区 本数", "不良区 本数", "p値", "判定"],
-      A.species.map((g) => [g.sp, g.n, g.nAll, nb(g.vitMean), nb(g.vitSd), ...VCLS.map((c) => g.counts[c]), nb(g.hMean, 1), nb(g.gMean, 1), g.worst >= 0 ? SCORE_ITEMS.at(g.worst).label : "", nb(g.vitG), nb(g.vitB), g.nG, g.nB, g.test && g.test.p != null ? (g.test.p < 0.001 ? "<0.001" : nb(g.test.p, 3)) : "", pWord(g.test)]),
-      (i, j) => j === 5 + VCLS.length + 7 && A.species.at(i).test && A.species.at(i).test.p != null && A.species.at(i).test.p < 0.05);
+    tbl(sS, r, ["樹種", "調査済み", "全本数", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)", "最も悪い項目", "良好区 平均", "不良区 平均", "良好区 本数", "不良区 本数", "p値", "補正p（ホルム）", "効果量δ", "効果の大きさ", "判定"],
+      A.species.map((g) => [g.sp, g.n, g.nAll, nb(g.vitMean), nb(g.vitSd), ...VCLS.map((c) => g.counts[c]), nb(g.hMean, 1), nb(g.gMean, 1), g.worst >= 0 ? SCORE_ITEMS.at(g.worst).label : "", nb(g.vitG), nb(g.vitB), g.nG, g.nB, pv(g.test.p), pv(g.pAdj), nb(g.test.delta), deltaWord(g.test.delta), g.test.p == null ? pWord(g.test) : pWord2(g.pAdj)]),
+      (i, j) => j === 5 + VCLS.length + 8 && A.species.at(i).pAdj != null && A.species.at(i).pAdj < 0.05);
+    // 3群以上の比較
+    const sM = bk.add("地上部_多群比較").width([30, 10, 12, 12, 22, 12, 30]);
+    let rm = 0; sM.set(rm++, 0, "3群以上の比較（クラスカル・ウォリス検定と、スティール・ドゥワス法による多重比較）", 4); rm++;
+    if (!A.multi.length) sM.set(rm, 0, "3本以上ある群が3つ以上そろう比較がありません。", 0);
+    for (const m of A.multi) {
+      sM.set(rm++, 0, `${m.title}：H＝${nb(m.H)}（自由度${m.df}）、p＝${pv(m.p)} → ${pWord2(m.p)}`, 6);
+      rm = tbl(sM, rm, ["群", "本数", "活力度 平均", "中央値"], m.groups.map((g) => [g.label, g.n, nb(g.m), nb(g.med)])) - 1;
+      rm = tbl(sM, rm, ["組み合わせ", "平均 1", "平均 2", "p値", "効果量δ", "効果の大きさ", "判定"], m.pairs.map((p) => [`${p.a} − ${p.b}`, nb(p.ma), nb(p.mb), pv(p.p), nb(p.delta), deltaWord(p.delta), pWord2(p.p)]), (i, j) => j === 3 && m.pairs.at(i).p < 0.05) + 1;
+    }
     if (A.sitesC.length > 1) { const sX = bk.add("地上部_樹種×調査地").width([18, ...A.sitesC.flatMap(() => [11, 8])]);
       sX.set(0, 0, "樹種×調査地：活力度の平均と本数", 4);
       tbl(sX, 2, ["樹種", ...A.sitesC.flatMap((st) => [`${siteShort(st)} 平均`, "本数"])], A.species.map((g) => [g.sp, ...A.sitesC.flatMap((st) => [nb(g.bySite[st].m), g.bySite[st].n || ""])])); }
