@@ -316,6 +316,18 @@ button.addph { font: inherit; cursor: pointer; }
 .antbl td:first-child { text-align: left; font-weight: 600; }
 .antbl td.hl { background: #f8b4b4; color: #17241b; font-weight: 700; }
 
+/* 自由分析 */
+.bi-ctl { position: sticky; top: -4px; z-index: 3; background: var(--bg); padding: 8px 0 6px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.bi-ctl .seg { margin-bottom: 6px; } .bi-ctl .seg button { min-height: 32px; padding: 4px 12px; font-size: 13px; }
+.bi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 6px; }
+.bi-grid label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.bi-grid .inp { padding: 5px 4px; font-size: 13px; }
+@media (min-width: 700px) { .bi-grid { grid-template-columns: repeat(5, 1fr); } }
+.bi-chips { margin-top: 6px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.bi-chips button { border: 1px solid var(--accent); color: var(--accent); background: var(--surface); border-radius: 999px; padding: 2px 9px; font-size: 12px; }
+.bi-out > svg { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; }
+.bi-list summary { font-weight: 700; color: var(--accent); padding: 8px 0; cursor: pointer; }
+
 /* ===== 地図の文字 ===== */
 .treelabels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
 .treelabels span { position: absolute; white-space: nowrap; font-weight: 700; color: #102116; background: rgba(255,255,255,.82); border-radius: 4px; padding: 0 3px; line-height: 1.3; }
@@ -455,7 +467,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.22.0（2026-11-20）",   // 更新したら sw.js の VERSION も変える
+  version: "1.23.0（2026-11-20）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -2141,12 +2153,12 @@ window.Store = (function () {
   const COVER_PCT = { r: 0.1, "+": 0.5, "1": 5, "2": 17.5, "3": 37.5, "4": 62.5, "5": 87.5 };
 
   // ---------- データの取り出しと集計 ----------
-  function analyze(site, y = S.year) {
+  function analyze(site, y = S.year, light = false) {
     const inS = (s) => !site || s === site;
     // 地上部：活力度が出ている木
     const trees = [];
     for (const t of T) { if (!inS(t.site)) continue; const r = R.get(recId.chijo(t.key, y)); const m = r ? treeMetrics(r.ans) : null;
-      trees.push({ t, site: t.site, z: zcode(t.forest, t.growth), forest: t.forest, growth: t.growth, type: leafType(t), lat: t.lat, lon: t.lon, vit: m && m.vit ? m.vit.avg : null, cls: m && m.vit ? m.vit.cls : null, h: m ? m.h : null, g: m && m.g ? m.g.val : null, sl: m ? slenderOf(m.h, m.g ? m.g.val : null) : null,
+      trees.push({ t, site: t.site, z: zcode(t.forest, t.growth), forest: t.forest, growth: t.growth, type: leafType(t), lat: t.lat, lon: t.lon, vit: m && m.vit ? m.vit.avg : null, cls: m && m.vit ? m.vit.cls : null, h: m ? m.h : null, g: m && m.g ? m.g.val : null, w: m ? m.w : null, sl: m ? slenderOf(m.h, m.g ? m.g.val : null) : null,
         items: SCORE_ITEMS.map((it) => r && visible(it, r.ans, {}) ? nv(r.ans[it.id]) : null) }); }
     const gmap = new Map();
     for (const x of trees) { const k = x.site + "|" + x.z; if (!gmap.has(k)) gmap.set(k, { site: x.site, z: x.z, label: `${siteShort(x.site)} ${zLabel(x.z)}`, all: [], done: [] }); const g = gmap.get(k); g.all.push(x); if (x.vit != null) g.done.push(x); }
@@ -2223,7 +2235,7 @@ window.Store = (function () {
       .map(({ label, xs }) => ({ label, n: xs.length, rH: spearman(xs.map((x) => x.h), xs.map((x) => x.vit)), rG: spearman(xs.map((x) => x.g), xs.map((x) => x.vit)), rS: spearman(xs.map((x) => x.sl), xs.map((x) => x.vit)) }));
     const done = trees.filter((x) => x.vit != null);
     // 場所による偏り（調査地ごと）：外周（樹木データの外側を結んだ線）からの距離と、近くの木どうしの似かたを調べる
-    const spatial = sitesC.map((st) => {
+    const spatial = light ? [] : sitesC.map((st) => {
       const all = toXY(trees.filter((x) => x.site === st && isFinite(x.lat) && isFinite(x.lon))), h = hull(all), vs = all.filter((x) => x.vit != null);
       vs.forEach((x) => { x.edge = distToHull(x.x, x.y, h); });
       const bands = [[0, 5, "外周から5m未満"], [5, 15, "5〜15m"], [15, Infinity, "15m以上"]].map(([a, b, l]) => { const xs = vs.filter((x) => x.edge != null && x.edge >= a && x.edge < b); return { l, n: xs.length, m: avg(xs.map((x) => x.vit)), bad: xs.filter((x) => x.vit >= 1.6).length }; });
@@ -2434,11 +2446,14 @@ window.Store = (function () {
   }
   async function openAnalysis() {
     const d = document.createElement("div"); d.className = "an";
-    const sites = siteList(); let site = S.site || "", tab = S.anTab || "chijo";
+    const sites = siteList(); let site = S.site || "", tab = S.anTab || "bi";
     d.innerHTML = `<div class="an-top"><button class="icon-btn" data-an="close" aria-label="閉じる">${ic("x")}</button><b>分析</b><select class="inp" id="anSite"><option value="">すべての調査地</option>${sites.map((s) => `<option${s === site ? " selected" : ""}>${esc(s)}</option>`).join("")}</select><button class="btn main mini" data-an="xlsx">${ic("down")}Excel</button></div>
-      <div class="tabs an-tabs"><button data-an-tab="chijo">地上部調査</button><button data-an-tab="gaikyo">概況調査</button><button data-an-tab="veg">植生調査</button><button data-an-tab="trend">経年変化</button></div><div class="an-body" id="anBody"></div>`;
+      <div class="tabs an-tabs"><button data-an-tab="bi">自由分析</button><button data-an-tab="chijo">地上部調査</button><button data-an-tab="gaikyo">概況調査</button><button data-an-tab="veg">植生調査</button><button data-an-tab="trend">経年変化</button></div><div class="an-body" id="anBody"></div>`;
     document.body.appendChild(d);
-    const render = () => { const A = analyze(site); $$("[data-an-tab]", d).forEach((b) => b.classList.toggle("on", b.dataset.anTab === tab)); $("#anBody", d).innerHTML = tab === "chijo" ? anChijoHTML(A) : tab === "gaikyo" ? anGaikyoHTML(A) : tab === "veg" ? anVegHTML(A) : anTrendHTML(trend(site)); paintIcons($("#anBody", d)); $("#anBody", d).scrollTop = 0; };
+    const biCtx = { close: () => d.remove() };
+    const render = () => { $$("[data-an-tab]", d).forEach((b) => b.classList.toggle("on", b.dataset.anTab === tab)); const host = $("#anBody", d); host.onclick = null; host.onchange = null; $("#anSite", d).hidden = tab === "bi";
+      if (tab === "bi") { biMount(host, biCtx); host.scrollTop = 0; return; }
+      const A = analyze(site); host.innerHTML = tab === "chijo" ? anChijoHTML(A) : tab === "gaikyo" ? anGaikyoHTML(A) : tab === "veg" ? anVegHTML(A) : anTrendHTML(trend(site)); paintIcons(host); host.scrollTop = 0; };
     $("#anSite", d).onchange = (e) => { site = e.target.value; render(); };
     d.addEventListener("click", async (e) => {
       const t = e.target.closest("[data-an-tab]"); if (t) { tab = S.anTab = t.dataset.anTab; render(); return; }
@@ -2564,6 +2579,167 @@ window.Store = (function () {
       tbl(sY, ry, ["調査区", ...TR.years.flatMap((y) => [`${fyShort(y)} 植栽密度`, `${fyShort(y)} 光環境(%)`, `${fyShort(y)} 枯れ割合(%)`])], TR.env.map((r) => [r.label, ...TR.years.flatMap((_, i) => [nb(r.density.at(i), 0), nb(r.light.at(i), 1), nb(r.dieback.at(i), 1)])]));
     }
     return bk.blob();
+  }
+
+  // =====================================================================
+  // 自由分析（BIのように、絞り込み・分け方・指標を選んでグラフと表を作る）
+  //   比較：調査地全体／調査地ごとの「良好・不良」を基本に、樹種やタイプでも分けて比べる
+  //   環境×樹木特性：調査区ごとの環境条件（横軸）と、木の状態（縦軸）の関係
+  //   グラフや行をタップすると、その中身に絞り込む（ドリルダウン）
+  // =====================================================================
+  const BI_DIMS = {
+    none: { label: "分けない", get: () => "全体" },
+    site: { label: "調査地", get: (x) => siteShort(x.site), filt: "site", val: (x) => x.site },
+    growth: { label: "生育区分（良好・不良）", get: (x) => x.growth || "区分なし", filt: "growth", val: (x) => x.growth },
+    forest: { label: "樹林の種類", get: (x) => x.forest || "不明", filt: "forest", val: (x) => x.forest },
+    type: { label: "樹木のタイプ", get: (x) => x.type, filt: "type", val: (x) => x.type },
+    sp: { label: "樹種", get: (x) => x.t.sp || "樹種不明", filt: "sp", val: (x) => x.t.sp || "" },
+    zone: { label: "調査区", get: (x) => `${siteShort(x.site)} ${zLabel(x.z)}` },
+  };
+  const BI_NEXT = { site: "sp", type: "sp", forest: "sp", zone: "sp", sp: "none", growth: "sp", none: "none" };
+  const BAD = new Set(VCLS.slice(2));   // 「不良」以上
+  const BI_METRICS = [
+    { k: "vit", label: "活力度（0良好〜4不良）", get: (x) => x.vit, fix4: true },
+    { k: "bad", label: "不良以上の割合（%）", get: (x) => x.vit == null ? null : BAD.has(x.cls) ? 100 : 0, pct: true },
+    ...SCORE_ITEMS.map((it, i) => ({ k: "v" + (i + 1), label: it.label + "（0〜4）", get: (x) => x.items.at(i), fix4: true })),
+    { k: "h", label: "樹高（m）", get: (x) => x.h }, { k: "g", label: "幹周（cm）", get: (x) => x.g }, { k: "w", label: "枝張り 平均（m）", get: (x) => x.w }, { k: "sl", label: "形状比", get: (x) => x.sl },
+  ];
+  const BI_ENV = ENV_VARS.filter((v) => !["vitMean", "slMean", "hMean"].includes(v.k));
+  const biM = (k) => BI_METRICS.find((m) => m.k === k) || BI_METRICS[0];
+  const BI_COL = { "良好": "#43a047", "不良": "#e53935" }, BI_PAL = ["#1565c0", "#ef6c00", "#6a1b9a", "#00838f", "#827717", "#ad1457", "#4e342e", "#37474f", "#2e7d32", "#c62828"];
+  const biColor = (v, i) => BI_COL[v] || TYPE_COL[v] || BI_PAL[i % BI_PAL.length];
+  function biDefaults() { return { mode: "compare", site: "", growth: "", forest: "", type: "", sp: "", metric: "vit", split: "site", color: "growth", chart: "bar", xEnv: "density", unit: "zone", zone: "", listZone: "" }; }
+  function biFilter(rows, B) {
+    return rows.filter((x) => (!B.site || x.site === B.site) && (!B.growth || x.growth === B.growth) && (!B.forest || x.forest === B.forest) && (!B.type || x.type === B.type) && (!B.sp || (x.t.sp || "") === B.sp) && (!B.zone || x.site + "|" + x.z === B.zone));
+  }
+  const q = (a, p) => { const s = a.slice().sort((x, y) => x - y); if (!s.length) return null; const i = (s.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i); return s.at(lo) + (s.at(hi) - s.at(lo)) * (i - lo); };
+  function biStats(xs, M) { const v = xs.map(M.get).filter((y) => y != null && isFinite(y)); return { n: v.length, vals: v, m: avg(v), sd: sdv(v), med: q(v, .5), q1: q(v, .25), q3: q(v, .75), min: v.length ? Math.min(...v) : null, max: v.length ? Math.max(...v) : null, counts: Object.fromEntries(VCLS.map((c) => [c, xs.filter((x) => x.cls === c).length])) }; }
+  const sortVals = (dim, vals) => dim === "growth" ? vals.sort((a, b) => ["良好", "不良"].indexOf(a) - ["良好", "不良"].indexOf(b)) : dim === "type" ? vals.sort((a, b) => ["常緑広葉樹", "落葉広葉樹", "針葉樹"].indexOf(a) - ["常緑広葉樹", "落葉広葉樹", "針葉樹"].indexOf(b)) : vals.sort((a, b) => a.localeCompare(b, "ja", { numeric: true }));
+  // ---------- 比較（グループ別） ----------
+  function biCompare(rows, B) {
+    const M = biM(B.metric), R0 = BI_DIMS[B.split], C0 = BI_DIMS[B.color];
+    let rv = sortVals(B.split, [...new Set(rows.map(R0.get))]);
+    if (B.split === "sp") rv.sort((a, b) => rows.filter((x) => R0.get(x) === b).length - rows.filter((x) => R0.get(x) === a).length);
+    const cv = sortVals(B.color, [...new Set(rows.map(C0.get))]);
+    const out = rv.map((r) => { const rx = rows.filter((x) => R0.get(x) === r); return { r, n: rx.length, cells: cv.map((c) => ({ c, ...biStats(rx.filter((x) => C0.get(x) === c), M) })) }; });
+    if (B.color === "growth") { out.forEach((o) => { const G = o.cells.find((x) => x.c === "良好"), Bd = o.cells.find((x) => x.c === "不良"); o.test = G && Bd ? mwu(G.vals, Bd.vals) : null; }); const ad = holm(out.map((o) => o.test ? o.test.p : null)); out.forEach((o, i) => { o.pAdj = ad.at(i); }); }
+    return { M, rv, cv, out };
+  }
+  function biCompareChart(C, B) {
+    const { M, cv, out } = C; if (!out.length) return "";
+    const stack = B.chart === "stack" && M.k === "vit", W = 440, L = 100, R0 = 50, bh = stack ? 14 : 12, gap = 12, rowH = cv.length * (bh + 3) + gap, top = 70 + (cv.length > 1 ? 18 : 0), H = top + out.length * rowH + 34;
+    const vals = out.flatMap((o) => o.cells.flatMap((c) => B.chart === "box" ? [c.min, c.max] : [c.m != null && c.sd != null ? c.m + c.sd : c.m])).filter((v) => v != null);
+    const xmax = stack ? 100 : M.fix4 ? 4 : M.pct ? 100 : Math.max(1e-9, ...vals) * 1.08, X = (v) => L + (W - L - R0) * Math.max(0, v) / xmax;
+    let s = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' width='${W}' height='${H}' ${SVGF} font-size='12'><rect width='${W}' height='${H}' fill='#fff'/><text x='12' y='24' font-size='15' font-weight='700' fill='#17241b'>${xe2(stack ? "活力度の判定の内訳" : M.label)}</text><text x='12' y='42' font-size='11.5' fill='#444'>${xe2(`${BI_DIMS[B.split].label}ごと${B.color !== "none" ? `・${BI_DIMS[B.color].label}で色分け` : ""}${stack ? "" : B.chart === "box" ? "（箱＝中央の半分、線＝最小〜最大、縦線＝中央値）" : "（棒＝平均、線＝標準偏差）"}`)}</text><text x='12' y='58' font-size='11' fill='#1a73e8'>行の名前をタップすると、その中に絞り込みます</text>`;
+    if (cv.length > 1 && !stack) cv.forEach((c, i) => { s += `<rect x='${12 + i * 84}' y='66' width='10' height='10' fill='${biColor(c, i)}'/><text x='${26 + i * 84}' y='75' font-size='11' fill='#444'>${xe2(c.length > 6 ? c.slice(0, 6) + "…" : c)}</text>`; });
+    if (stack) VCLS.forEach((c, i) => { s += `<rect x='${12 + i * 84}' y='66' width='10' height='10' fill='${VCOL[c]}'/><text x='${26 + i * 84}' y='75' font-size='11' fill='#444'>${xe2(c)}</text>`; });
+    if (!stack) for (let k = 0; k <= 4; k++) { const v = xmax * k / 4; s += `<line x1='${X(v)}' x2='${X(v)}' y1='${top - 4}' y2='${H - 30}' stroke='#eef1ee'/><text x='${X(v)}' y='${H - 16}' text-anchor='middle' font-size='10.5' fill='#666'>${f2(v, xmax > 20 ? 0 : 1)}</text>`; }
+    out.forEach((o, i) => { const y0 = top + i * rowH;
+      s += `<g data-bi-row='${xe2(o.r)}' style='cursor:pointer'><rect x='0' y='${y0 - 2}' width='${W}' height='${rowH - gap + 4}' fill='${i % 2 ? "#fafcfa" : "#fff"}'/><text x='${L - 8}' y='${y0 + (rowH - gap) / 2 + 4}' text-anchor='end' fill='#1a73e8' font-weight='600'>${xe2(o.r.length > 9 ? o.r.slice(0, 9) + "…" : o.r)}</text>`;
+      o.cells.forEach((c, j) => { const y = y0 + j * (bh + 3), col = biColor(c.c, j);
+        if (!c.n) { s += `<text x='${L + 4}' y='${y + bh - 2}' font-size='10' fill='#aaa'>データなし</text>`; return; }
+        if (stack) { let x = L; const tot = VCLS.reduce((p, k) => p + c.counts[k], 0) || 1; VCLS.forEach((k) => { const w = (W - L - R0) * c.counts[k] / tot; if (w > 0) { s += `<rect x='${x}' y='${y}' width='${w}' height='${bh}' fill='${VCOL[k]}'/>`; if (w > 16) s += `<text x='${x + w / 2}' y='${y + bh - 3}' text-anchor='middle' font-size='9.5' fill='#fff'>${c.counts[k]}</text>`; x += w; } }); }
+        else if (B.chart === "box") { s += `<line x1='${X(c.min)}' x2='${X(c.max)}' y1='${y + bh / 2}' y2='${y + bh / 2}' stroke='${col}'/><rect x='${X(c.q1)}' y='${y}' width='${Math.max(2, X(c.q3) - X(c.q1))}' height='${bh}' fill='${col}' fill-opacity='.35' stroke='${col}'/><line x1='${X(c.med)}' x2='${X(c.med)}' y1='${y - 1}' y2='${y + bh + 1}' stroke='#17241b' stroke-width='2'/>`; }
+        else { s += `<rect x='${L}' y='${y}' width='${Math.max(1, X(c.m) - L)}' height='${bh}' fill='${col}' fill-opacity='.85'/>`; if (c.sd != null) s += `<line x1='${X(c.m - c.sd)}' x2='${X(c.m + c.sd)}' y1='${y + bh / 2}' y2='${y + bh / 2}' stroke='#333'/>`; }
+        s += `<text x='${W - R0 + 4}' y='${y + bh - 2}' font-size='10' fill='#444'>${stack ? "" : f2(B.chart === "box" ? c.med : c.m, M.pct || xmax > 20 ? 0 : 2)}${stack ? c.n : ""}<tspan fill='#999'> n${c.n}</tspan></text>`; });
+      s += `</g>`; });
+    return s + `</svg>`;
+  }
+  // ---------- 環境条件 × 樹木特性 ----------
+  function biEnv(rows, A, B) {
+    const M = biM(B.metric), X = BI_ENV.find((v) => v.k === B.xEnv) || BI_ENV[0], env = new Map(A.gk.map((g) => [g.site + "|" + g.z, g]));
+    let pts;
+    if (B.unit === "tree") pts = rows.map((x) => { const g = env.get(x.site + "|" + x.z), y = M.get(x); return g && g[X.k] != null && y != null ? { x: g[X.k], y, c: BI_DIMS[B.color].get(x), zone: x.site + "|" + x.z, label: "" } : null; }).filter(Boolean);
+    else { const zs = [...new Set(rows.map((x) => x.site + "|" + x.z))]; pts = zs.map((k) => { const g = env.get(k), xs = rows.filter((x) => x.site + "|" + x.z === k), st = biStats(xs, M); return g && g[X.k] != null && st.n ? { x: g[X.k], y: st.m, n: st.n, c: B.color === "none" ? "全体" : BI_DIMS[B.color].get(xs.at(0)), zone: k, label: g.short } : null; }).filter(Boolean); }
+    const groups = [...new Set(pts.map((p) => p.c))].map((c) => ({ c, n: pts.filter((p) => p.c === c).length, rho: spearman(pts.filter((p) => p.c === c).map((p) => p.x), pts.filter((p) => p.c === c).map((p) => p.y)) }));
+    return { M, X, pts, rho: spearman(pts.map((p) => p.x), pts.map((p) => p.y)), groups };
+  }
+  function biEnvChart(E, B) {
+    const { M, X: XV, pts } = E; if (pts.length < 2) return "";
+    const W = 440, H = 400, L = 48, R0 = 12, top = 96, Bm = 56, cv = [...new Set(pts.map((p) => p.c))];
+    const rg = (a, f) => { if (f) return [0, M.pct ? 100 : 4]; let lo = Math.min(...a), hi = Math.max(...a); if (lo === hi) { lo -= 1; hi += 1; } const pd = (hi - lo) * .08; return [lo - pd, hi + pd]; };
+    const [x0, x1] = rg(pts.map((p) => p.x)), [y0, y1] = rg(pts.map((p) => p.y), M.fix4 || M.pct), Xp = (v) => L + (W - L - R0) * (v - x0) / (x1 - x0), Yp = (v) => top + (H - top - Bm) * (1 - (v - y0) / (y1 - y0));
+    let s = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' width='${W}' height='${H}' ${SVGF} font-size='12'><rect width='${W}' height='${H}' fill='#fff'/><text x='12' y='24' font-size='15' font-weight='700' fill='#17241b'>${xe2(XV.label.replace(/\(.*\)/, ""))} と ${xe2(M.label.replace(/（.*）/, ""))}</text><text x='12' y='42' font-size='12' fill='#444'>順位相関係数 ρ＝${f2(E.rho)}：${xe2(rhoWord(E.rho))}・${pts.length}${B.unit === "tree" ? "本" : "調査区"}</text><text x='12' y='58' font-size='11' fill='#1a73e8'>点をタップすると、その調査区の木の一覧を表示します</text>`;
+    cv.forEach((c, i) => { s += `<circle cx='${18 + i * 96}' cy='72' r='5' fill='${biColor(c, i)}'/><text x='${27 + i * 96}' y='76' font-size='11' fill='#444'>${xe2(c.length > 6 ? c.slice(0, 6) + "…" : c)}</text>`; });
+    for (let k = 0; k <= 4; k++) { const v = y0 + (y1 - y0) * k / 4, x = x0 + (x1 - x0) * k / 4; s += `<line x1='${L}' x2='${W - R0}' y1='${Yp(v)}' y2='${Yp(v)}' stroke='#e3e8e4'/><text x='${L - 6}' y='${Yp(v) + 4}' text-anchor='end' fill='#666'>${f2(v, Math.abs(y1 - y0) > 20 ? 0 : 1)}</text><text x='${Xp(x)}' y='${H - Bm + 18}' text-anchor='middle' fill='#666'>${f2(x, Math.abs(x1 - x0) > 20 ? 0 : 1)}</text>`; }
+    s += `<text x='${(L + W - R0) / 2}' y='${H - 14}' text-anchor='middle' fill='#17241b'>${xe2(XV.label)}</text><text x='${L}' y='${top - 6}' font-size='11' fill='#666'>${xe2(M.label)}${M.fix4 ? "（上ほど不良）" : ""}</text>`;
+    const placed = [];
+    pts.forEach((p) => { const px = Xp(p.x), py = Yp(p.y), col = biColor(p.c, cv.indexOf(p.c));
+      s += `<circle data-bi-zone='${xe2(p.zone)}' style='cursor:pointer' cx='${px}' cy='${py}' r='${B.unit === "tree" ? 4.5 : 7}' fill='${col}' fill-opacity='.8' stroke='#fff'/>`;
+      if (p.label) { const right = px > W - 130, tw = p.label.length * 11 + 4, lx = right ? px - 10 - tw : px + 10; let ly = py + 4; while (placed.some((r) => lx < r[2] && lx + tw > r[0] && Math.abs(ly - r[1]) < 13)) ly += 13; placed.push([lx, ly, lx + tw]); s += `<text x='${right ? px - 10 : px + 10}' y='${ly}' text-anchor='${right ? "end" : "start"}' font-size='11' fill='#333'>${xe2(p.label)}</text>`; } });
+    return s + `</svg>`;
+  }
+  // ---------- 画面 ----------
+  const sel = (id, val, opts) => `<select class="inp" data-bi="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(val) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  function biHTML(rowsAll, A, B) {
+    const rows = biFilter(rowsAll, B), uniq = (f) => [...new Set(rowsAll.map(f).filter(Boolean))];
+    const dimOpts = (skip) => Object.entries(BI_DIMS).filter(([k]) => !skip.includes(k)).map(([k, d]) => [k, d.label]);
+    const chips = [["site", B.site && siteShort(B.site)], ["growth", B.growth], ["forest", B.forest], ["type", B.type], ["sp", B.sp], ["zone", B.zone && (A.gk.find((g) => g.site + "|" + g.z === B.zone) || {}).label]].filter(([, v]) => v);
+    let body = "", table = "";
+    if (B.mode === "compare") {
+      const C = biCompare(rows, B);
+      body = biCompareChart(C, B) || `<p class="empty">条件に合う木がありません。</p>`;
+      table = anTable([BI_DIMS[B.split].label, ...C.cv.flatMap((c) => [`${c} 本数`, `${c} ${B.chart === "box" ? "中央値" : "平均"}`]), ...(B.color === "growth" ? ["p値", "補正p", "効果量δ", "判定"] : [])],
+        C.out.map((o) => [o.r, ...o.cells.flatMap((c) => [c.n, f2(B.chart === "box" ? c.med : c.m, C.M.pct ? 0 : 2)]), ...(B.color === "growth" ? [o.test ? pFmt(o.test.p) : "－", pFmt(o.pAdj), o.test && o.test.delta != null ? `${f2(o.test.delta)}（${deltaWord(o.test.delta)}）` : "－", o.test && o.test.p != null ? pWord2(o.pAdj) : "本数不足"] : [])]),
+        B.color === "growth" ? (i, j) => j === 1 + C.cv.length * 2 + 1 && C.out.at(i).pAdj != null && C.out.at(i).pAdj < 0.05 : null);
+      if (B.color === "growth") table += `<p class="small muted">良好と不良の比較はU検定（各3本以上）。補正p＝この表の行数で補正（ホルム法）。効果量δが負なら良好の方が値が小さい（活力度なら良好の方が良い）。</p>`;
+    } else {
+      const E = biEnv(rows, A, B);
+      body = biEnvChart(E, B) || `<p class="empty">環境条件と木の値の両方がある${B.unit === "tree" ? "木" : "調査区"}が2つ以上必要です。</p>`;
+      table = anTable([BI_DIMS[B.color].label, "点の数", "順位相関係数ρ", "関係の強さ"], [["すべて", E.pts.length, f2(E.rho), rhoWord(E.rho)], ...E.groups.map((g) => [g.c, g.n, f2(g.rho), rhoWord(g.rho)])]);
+      table += `<p class="small muted">${B.unit === "tree" ? "「1本ずつ」は、同じ調査区の木に同じ環境の値を当てはめているため、点の数ほどの確かさはありません。傾向を見る目安にしてください。" : "1点＝1調査区（絞り込んだ木の平均）。調査区が少ないため傾向の目安です。"}</p>`;
+    }
+    const lz = B.listZone, list = rows.filter((x) => (!lz || x.site + "|" + x.z === lz) && (x.vit != null || x.h != null)).sort((a, b) => (b.vit ?? -1) - (a.vit ?? -1)).slice(0, 300);
+    return `<div class="bi-ctl">
+        <div class="seg">${[["compare", "比較（グループ別）"], ["env", "環境×樹木特性"]].map(([k, l]) => `<button data-bi-mode="${k}"${B.mode === k ? ' class="on"' : ""}>${l}</button>`).join("")}</div>
+        <div class="bi-grid">
+          <label>調査地${sel("site", B.site, [["", "全体"], ...uniq((x) => x.site).map((v) => [v, siteShort(v)])])}</label>
+          <label>生育区分${sel("growth", B.growth, [["", "すべて"], ["良好", "良好"], ["不良", "不良"]])}</label>
+          <label>樹林の種類${sel("forest", B.forest, [["", "すべて"], ...CFG.forestTypes.map((v) => [v, v])])}</label>
+          <label>タイプ${sel("type", B.type, [["", "すべて"], ["常緑広葉樹", "常緑広葉樹"], ["落葉広葉樹", "落葉広葉樹"], ["針葉樹", "針葉樹"]])}</label>
+          <label>樹種${sel("sp", B.sp, [["", "すべて"], ...uniq((x) => x.t.sp).sort((a, b) => a.localeCompare(b, "ja")).map((v) => [v, v])])}</label>
+          <label>${B.mode === "env" ? "縦軸（木の状態）" : "指標"}${sel("metric", B.metric, BI_METRICS.map((m) => [m.k, m.label]))}</label>
+          ${B.mode === "compare" ? `<label>行の分け方${sel("split", B.split, dimOpts(["growth"]))}</label><label>色分け${sel("color", B.color, dimOpts(["zone"]))}</label><label>グラフ${sel("chart", B.chart, [["bar", "平均（棒）"], ["box", "ばらつき（箱ひげ）"], ["stack", "判定の内訳（活力度）"]])}</label>`
+            : `<label>横軸（環境条件）${sel("xEnv", B.xEnv, BI_ENV.map((v) => [v.k, v.label]))}</label><label>点の単位${sel("unit", B.unit, [["zone", "調査区ごと"], ["tree", "1本ずつ"]])}</label><label>色分け${sel("color", B.color, dimOpts(["zone"]))}</label>`}
+        </div>
+        ${chips.length ? `<div class="bi-chips">絞り込み中：${chips.map(([k, v]) => `<button data-bi-clear="${k}">${esc(v)} ×</button>`).join("")}<button data-bi-clear="all">すべて解除</button></div>` : ""}
+      </div>
+      <div class="bi-out">${body}</div>${table}
+      <div class="btnrow" style="margin:8px 0"><button class="btn line mini" data-bi-act="png">${ic("down")}グラフを画像で保存</button><button class="btn line mini" data-bi-act="xlsx">${ic("file")}この結果をExcelに出力</button></div>
+      <details class="bi-list"${lz ? " open" : ""}><summary>対象の木の一覧（${lz ? `${esc((A.gk.find((g) => g.site + "|" + g.z === lz) || {}).label || "")}・` : ""}${list.length}本）</summary>${lz ? `<button class="btn line mini" data-bi-act="unlist">一覧の絞り込みを解除</button>` : ""}
+        <div class="antbl"><table><thead><tr><th>調査地</th><th>No.</th><th>樹種</th><th>区分</th><th>活力度</th><th>判定</th><th>樹高</th><th>幹周</th><th>形状比</th></tr></thead><tbody>${list.map((x) => `<tr data-bi-tree="${esc(x.t.key)}" style="cursor:pointer"><td>${esc(siteShort(x.site))}</td><td>${esc(x.t.tno)}</td><td>${esc(x.t.sp)}</td><td>${esc(`${forestShort(x.forest)}・${x.growth}`)}</td><td>${f2(x.vit, 1)}</td><td>${esc(x.cls || "")}</td><td>${f2(x.h, 1)}</td><td>${f2(x.g, 1)}</td><td>${f2(x.sl, 1)}</td></tr>`).join("")}</tbody></table></div>
+        <p class="small muted">行をタップすると、その木の調査画面を開きます。</p></details>`;
+  }
+  // 自由分析のタブを組み立てて、操作を受け付ける
+  function biMount(host, ctx) {
+    const B = S.bi = S.bi || biDefaults();
+    const A = ctx.A || (ctx.A = analyze("", S.year, true)), rows = A.trees;
+    const render = () => { host.innerHTML = biHTML(rows, A, B); paintIcons(host); };
+    host.onchange = (e) => { const k = e.target.dataset && e.target.dataset.bi; if (!k) return; B[k] = e.target.value; if (k === "metric" && B.chart === "stack" && e.target.value !== "vit") B.chart = "bar"; render(); };
+    host.onclick = async (e) => {
+      const md = e.target.closest("[data-bi-mode]"); if (md) { B.mode = md.dataset.biMode; if (B.mode === "env" && B.color === "growth") B.color = "growth"; render(); return; }
+      const cl = e.target.closest("[data-bi-clear]"); if (cl) { if (cl.dataset.biClear === "all") Object.assign(B, { site: "", growth: "", forest: "", type: "", sp: "", zone: "", listZone: "" }); else B[cl.dataset.biClear] = ""; if (!B.site && B.split === "sp" && !B.sp) B.split = "site"; render(); return; }
+      const rw = e.target.closest("[data-bi-row]"); if (rw) { const d = BI_DIMS[B.split], v = rw.dataset.biRow, x = rows.find((y) => d.get(y) === v);
+        if (B.split === "zone" && x) { B.site = x.site; B.growth = x.growth; B.forest = x.forest; } else if (d.filt && x) B[d.filt] = d.val(x);
+        B.split = BI_NEXT[B.split] || "none"; render(); host.scrollIntoView({ block: "start" }); return; }
+      const zp = e.target.closest("[data-bi-zone]"); if (zp) { B.listZone = zp.dataset.biZone; render(); const l = $(".bi-list", host); if (l) { l.open = true; l.scrollIntoView({ block: "start" }); } return; }
+      const tr = e.target.closest("[data-bi-tree]"); if (tr) { const i = TIDX.get(tr.dataset.biTree); if (i != null) { ctx.close(); openChijo(i); } return; }
+      const act = e.target.closest("[data-bi-act]"); if (!act) return;
+      if (act.dataset.biAct === "unlist") { B.listZone = ""; render(); return; }
+      const svg = ($(".bi-out", host).innerHTML || "").trim(); if (!svg.startsWith("<svg")) { toast("グラフがありません"); return; }
+      const name = `自由分析_${fyShort(S.year)}_${stamp()}`;
+      if (act.dataset.biAct === "png") { const p = await svgToPng(svg); if (p) await saveBlob(new Blob([p.buf], { type: "image/png" }), name + ".png"); }
+      else { const blob = await busy("Excelを作成しています…", async () => { const bk = XW.book(), sh = bk.add("自由分析").width([22, 12, 12, 12, 12, 12, 12, 12, 12, 12]);
+        sh.set(0, 0, `${CFG.appTitle} 自由分析（${fyLabel(S.year)}）`, 4); sh.set(1, 0, `条件：${[B.mode === "compare" ? "比較" : "環境×樹木特性", B.site ? siteShort(B.site) : "全体", B.growth, B.forest, B.type, B.sp].filter(Boolean).join("／")}　指標：${biM(B.metric).label}`, 0);
+        const p = await svgToPng(svg); if (p) (sh.images = []).push({ buf: p.buf, w: p.w, h: p.h, r: 3, c: 0 });
+        const t = $(".antbl table", host), r0 = 4 + (p ? Math.ceil(p.h / 20) + 1 : 0);
+        if (t) [...t.rows].forEach((tr2, i) => [...tr2.cells].forEach((td, j) => { const v = td.textContent; sh.set(r0 + i, j, /^-?\d+(\.\d+)?$/.test(v) ? +v : v, i === 0 ? 1 : 2); }));
+        const lst = rows.length && biFilter(rows, B), tl = bk.add("対象の木").width([16, 8, 14, 12, 9, 12, 9, 9, 9]);
+        tl.row(0, ["調査地", "樹木番号", "樹種", "区分", "活力度", "判定", "樹高(m)", "幹周(cm)", "形状比"], 1);
+        (lst || []).forEach((x, i) => tl.row(i + 1, [x.site, x.t.tno, x.t.sp, `${forestShort(x.forest)}・${x.growth}`, x.vit ?? "", x.cls || "", x.h ?? "", x.g ?? "", x.sl ?? ""], 2));
+        return bk.blob(); }); if (blob) await saveBlob(blob, name + ".xlsx"); }
+    };
+    render();
   }
 
   // =====================================================================
