@@ -316,6 +316,7 @@ button.addph { font: inherit; cursor: pointer; }
 .antbl td:first-child { text-align: left; font-weight: 600; }
 .antbl td.hl { background: #f8b4b4; color: #17241b; font-weight: 700; }
 
+.an-src:empty { display: none; }
 /* 自由分析 */
 .bi-ctl { position: sticky; top: -4px; z-index: 3; background: var(--bg); padding: 8px 0 6px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
 .bi-ctl .seg { margin-bottom: 6px; } .bi-ctl .seg button { min-height: 32px; padding: 4px 12px; font-size: 13px; }
@@ -467,7 +468,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.24.0（2026-11-20）",   // 更新したら sw.js の VERSION も変える
+  version: "1.25.0（2026-11-24）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -2154,11 +2155,12 @@ window.Store = (function () {
 
   // ---------- データの取り出しと集計 ----------
   function analyze(site, y = S.year, light = false) {
-    const inS = (s) => !site || s === site;
-    // 地上部：活力度が出ている木
+    const inS = (s) => !site || s === site, DS = AN_DS && (y === S.year || y === AN_DS.year) ? AN_DS : null;
+    // 地上部：活力度が出ている木（PCで編集したExcelを読み込んでいるときは、その値を使う）
     const trees = [];
-    for (const t of T) { if (!inS(t.site)) continue; const r = R.get(recId.chijo(t.key, y)); const m = r ? treeMetrics(r.ans) : null;
-      trees.push({ t, site: t.site, z: zcode(t.forest, t.growth), forest: t.forest, growth: t.growth, type: leafType(t), lat: t.lat, lon: t.lon, vit: m && m.vit ? m.vit.avg : null, cls: m && m.vit ? m.vit.cls : null, h: m ? m.h : null, g: m && m.g ? m.g.val : null, w: m ? m.w : null, sl: m ? slenderOf(m.h, m.g ? m.g.val : null) : null,
+    if (DS) for (const x of DS.trees) { if (inS(x.site)) trees.push({ ...x }); }
+    else for (const t of T) { if (!inS(t.site)) continue; const r = R.get(recId.chijo(t.key, y)); const m = r ? treeMetrics(r.ans) : null;
+      trees.push({ t, rid: r ? r.id : "", site: t.site, z: zcode(t.forest, t.growth), forest: t.forest, growth: t.growth, type: leafType(t), lat: t.lat, lon: t.lon, vit: m && m.vit ? m.vit.avg : null, cls: m && m.vit ? m.vit.cls : null, h: m ? m.h : null, g: m && m.g ? m.g.val : null, d: m && m.d ? m.d.val : null, w: m ? m.w : null, sl: m ? slenderOf(m.h, m.g ? m.g.val : null) : null,
         items: SCORE_ITEMS.map((it) => r && visible(it, r.ans, {}) ? nv(r.ans[it.id]) : null) }); }
     const gmap = new Map();
     for (const x of trees) { const k = x.site + "|" + x.z; if (!gmap.has(k)) gmap.set(k, { site: x.site, z: x.z, label: `${siteShort(x.site)} ${zLabel(x.z)}`, all: [], done: [] }); const g = gmap.get(k); g.all.push(x); if (x.vit != null) g.done.push(x); }
@@ -2194,21 +2196,24 @@ window.Store = (function () {
     { const ad = holm(types.map((g) => g.test.p)); types.forEach((g, i) => { g.pAdj = ad.at(i); }); }
     const typeKW = kruskal(types.map((t) => ({ label: t.type, vals: t.vals })));
     const type2 = types.filter((t) => t.n >= 3).length === 2 ? (() => { const [a, b] = types.filter((t) => t.n >= 3); return { a: a.type, b: b.type, ...mwu(a.vals, b.vals) }; })() : null;
-    // 概況：調査区ごと
-    const gk = [];
-    for (const s of siteList().filter(inS)) { const r = R.get(recId.gaikyo(s, y)); if (!r) continue; const a = r.ans;
-      for (const z of activeZones(s, a)) { const g = groups.find((x) => x.site === s && x.z === z), ls_ = nv(a[`${z}|lightSite`]), lr = nv(a[`${z}|lightRef`]), sp = spAvg(spVals(a, z));
-        const lowH = nv(a[`${z}|lowH`]), deadH = nv(a[`${z}|deadH`]), hMean = g ? g.hMean : null;
-        // 枝葉のある範囲＝平均樹高−下枝高、枯れ枝の範囲＝枯れ下がり高さ−下枝高、下枝の枯れ割合＝枯れ枝の範囲÷枝葉のある範囲×100
-        const crown = hMean != null && lowH != null ? hMean - lowH : null, deadLen = deadH != null && lowH != null ? Math.max(0, deadH - lowH) : null;
-        gk.push({ site: s, z, label: `${siteShort(s)} ${zoneName(a, z)}`, short: `${siteShort(s)} ${zoneShort(a, z)}`, light: ls_ != null && lr ? Math.round(ls_ / lr * 1000) / 10 : null, spacing: sp === "" ? null : sp, density: densityOf(sp === "" ? null : sp),
-          lowH, deadH, hMean, crown, deadLen, dieback: crown && crown > 0 && deadLen != null ? Math.round(deadLen / crown * 1000) / 10 : null, deadState: a[`${z}|deadState`] || "",
-          litter: nv(a[`${z}|litter`]), slope: nv(a[`${z}|slope`]), age: nv(a[`${z}|age`]), erosion: a[`${z}|erosion`] || "", aspect: a[`${z}|aspect`] || "",
-          mgmt: (a[`${z}|mgmt`] || []).join("・"), landform: a[`${z}|landform`] || "", vitMean: g ? g.vitMean : null, slMean: g ? g.slMean : null, n: g ? g.n : 0 }); } }
-    // 植生調査区を、同じ調査地・調査区（樹林の種類×生育状況）の概況調査と結び付ける
-    const vegP = vegRecs(y).filter((r) => inS(r.site));
-    for (const x of gk) { const p = vegP.find((r) => r.site === x.site && zcode(r.ans.forest, r.ans.growth) === x.z); if (!p) continue; const L = p.layers || {};
-      x.plot = p.no; x.vegN = (p.sp || []).length ? new Set(p.sp.map((q) => q.n)).size : null; x.herbC = nv((L.H || {}).c); x.shrubC = nv((L.S || {}).c); x.treeC = nv((L.T1 || {}).c); }
+    // 概況：調査区ごと（記録、または読み込んだExcelの「調査区データ」から、元の値を集める）
+    const zr = [];
+    if (DS) for (const x of DS.zones) { if (inS(x.site)) zr.push({ ...x }); }
+    else {
+      for (const s of siteList().filter(inS)) { const r = R.get(recId.gaikyo(s, y)); if (!r) continue; const a = r.ans;
+        for (const z of activeZones(s, a)) { const sp = spAvg(spVals(a, z));
+          zr.push({ rid: r.id, site: s, z, label: `${siteShort(s)} ${zoneName(a, z)}`, short: `${siteShort(s)} ${zoneShort(a, z)}`, spacing: sp === "" ? null : sp, lightSite: nv(a[`${z}|lightSite`]), lightRef: nv(a[`${z}|lightRef`]), lowH: nv(a[`${z}|lowH`]), deadH: nv(a[`${z}|deadH`]), deadState: a[`${z}|deadState`] || "",
+            litter: nv(a[`${z}|litter`]), slope: nv(a[`${z}|slope`]), age: nv(a[`${z}|age`]), erosion: a[`${z}|erosion`] || "", aspect: a[`${z}|aspect`] || "", mgmt: (a[`${z}|mgmt`] || []).join("・"), landform: a[`${z}|landform`] || "" }); } }
+      // 植生調査区を、同じ調査地・調査区（樹林の種類×生育状況）の概況調査と結び付ける
+      const vegP = vegRecs(y).filter((r) => inS(r.site));
+      for (const x of zr) { const p = vegP.find((r) => r.site === x.site && zcode(r.ans.forest, r.ans.growth) === x.z); if (!p) continue; const L = p.layers || {};
+        x.plot = p.no; x.vegN = (p.sp || []).length ? new Set(p.sp.map((q) => q.n)).size : null; x.herbC = nv((L.H || {}).c); x.shrubC = nv((L.S || {}).c); x.treeC = nv((L.T1 || {}).c); }
+    }
+    // 計算する値：植栽密度・相対光量子束密度・平均樹高（地上部）・枝葉の範囲・枯れ枝の範囲・枯れ割合・活力度の平均
+    const gk = zr.map((x) => { const g = groups.find((q) => q.site === x.site && q.z === x.z), hMean = g ? g.hMean : null;
+      const crown = hMean != null && x.lowH != null ? hMean - x.lowH : null, deadLen = x.deadH != null && x.lowH != null ? Math.max(0, x.deadH - x.lowH) : null;
+      return { ...x, light: x.lightSite != null && x.lightRef ? Math.round(x.lightSite / x.lightRef * 1000) / 10 : null, density: densityOf(x.spacing), hMean, crown, deadLen, dieback: crown && crown > 0 && deadLen != null ? Math.round(deadLen / crown * 1000) / 10 : null,
+        vitMean: g ? g.vitMean : null, slMean: g ? g.slMean : null, n: g ? g.n : 0 }; });
     // 環境条件どうし・健全度との関係（調査区ごとの値で順位相関）
     const envVars = ENV_VARS.filter((v) => gk.filter((x) => x[v.k] != null).length >= 2);
     const corr = envVars.map((a) => envVars.map((b) => a === b ? 1 : spearman(gk.map((x) => x[a.k]), gk.map((x) => x[b.k]))));
@@ -2243,6 +2248,8 @@ window.Store = (function () {
     }).filter((x) => x.n);
     return { site, year: y, trees, done, slTypes, slAll, sizeRows, spatial, groups, compare, species, types, typeKW, type2, sitesC, gk, envVars, corr, corrN, rel, cats, plots, sor, jac, pairs, ra, nTrees: trees.length, nDone: trees.filter((x) => x.vit != null).length };
   }
+  // 読み込んだExcel（PCで編集した分析用データ）。null のときはアプリの記録を使う
+  let AN_DS = null;
   // ---------- 経年変化：前の年度と今の年度の比較、年度ごとの推移 ----------
   function trend(site) {
     const inS = (s) => !site || s === site;
@@ -2444,142 +2451,277 @@ window.Store = (function () {
       <h4>環境条件の推移（調査区ごと）</h4>
       ${anTable(["調査区", ...TR.years.flatMap((y) => [`${fyShort(y)} 植栽密度`, `${fyShort(y)} 光環境(%)`, `${fyShort(y)} 枯れ割合(%)`])], TR.env.map((r) => [r.label, ...TR.years.flatMap((_, i) => [f2(r.density.at(i), 0), f2(r.light.at(i), 1), f2(r.dieback.at(i), 1)])]))}`;
   }
+  // ---------- PCで編集した分析用Excel（樹木データ・調査区データ）を読み込む ----------
+  function dataHeads() {
+    const tdCols = ["id", "year", "site", "zkey", "zone", "forest", "growth", "type", "tno", "sp", ...SCORE_ITEMS.map((_, i) => "v" + (i + 1)), "vit", "cls", "h", "g", "d", "w", "sl", "slc", "lat", "lon", "e_density", "e_light", "e_dieback", "e_lowH", "e_litter", "e_slope", "e_age", "e_landform", "e_erosion", "e_deadState", "memo"];
+    const tdHead = { id: "内部ID", year: "年度", site: "調査地", zkey: "調査区キー", zone: "調査区", forest: "樹林の種類", growth: "生育区分", type: "樹木のタイプ", tno: "樹木番号", sp: "樹種", vit: "活力度", cls: "判定", h: "樹高(m)", g: "幹周(cm)", d: "地際直径(cm)", w: "枝張り(m)", sl: "形状比", slc: "形状比の区分", lat: "緯度", lon: "経度",
+      e_density: "植栽密度(本/ha)", e_light: "相対光量子束密度(%)", e_dieback: "下枝の枯れ割合(%)", e_lowH: "下枝高(m)", e_litter: "リター(cm)", e_slope: "斜面傾斜角(°)", e_age: "推定樹齢(年)", e_landform: "地形", e_erosion: "のり面浸食", e_deadState: "枯れの状態", memo: "メモ（PCで直した理由など）" };
+    SCORE_ITEMS.forEach((it, i) => { tdHead["v" + (i + 1)] = it.label; });
+    const zdCols = ["zkey", "year", "site", "zone", "forest", "growth", "spacing", "density", "lightSite", "lightRef", "light", "lowH", "deadH", "hMean", "crown", "deadLen", "dieback", "vitMean", "slMean", "n", "landform", "erosion", "deadState", "mgmt", "litter", "slope", "age", "plot", "vegN", "herbC", "shrubC", "treeC", "id", "memo"];
+    const zdHead = { zkey: "調査区キー", year: "年度", site: "調査地", zone: "調査区", forest: "樹林の種類", growth: "生育区分", spacing: "樹木間隔 平均(m)", density: "植栽密度(本/ha)", lightSite: "光 調査地 測定値", lightRef: "光 対照地 測定値", light: "相対光量子束密度(%)", lowH: "下枝高(m)", deadH: "枯れ下がり高さ(m)", hMean: "平均樹高(m)", crown: "枝葉のある範囲(m)", deadLen: "枯れ枝の範囲(m)", dieback: "下枝の枯れ割合(%)", vitMean: "活力度 平均", slMean: "形状比 平均", n: "地上部の本数",
+      landform: "地形", erosion: "のり面浸食", deadState: "枯れの状態", mgmt: "実施した管理", litter: "リター堆積厚(cm)", slope: "斜面傾斜角(°)", age: "推定樹齢(年)", plot: "植生調査区", vegN: "出現種数", herbC: "草本層の植被率(%)", shrubC: "低木層の植被率(%)", treeC: "高木層の植被率(%)", id: "内部ID", memo: "メモ（PCで直した理由など）" };
+    return { tdCols, tdHead, zdCols, zdHead };
+  }
+  const yearFromLabel = (s) => { const m = String(s || "").match(/令和\s*(\d+)/); return m ? 2018 + +m[1] : (String(s || "").match(/(\d{4})/) || [])[1] ? +String(s).match(/(\d{4})/)[1] : null; };
+  async function importAnalysisExcel(file) {
+    await loadXLSX();
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array" }), H = dataHeads();
+    const tws = wb.Sheets[TD_NAME], zws = wb.Sheets[ZD_NAME];
+    if (!tws) throw new Error(`「${TD_NAME}」シートが見つかりません。このアプリで出力した分析結果（または自由分析）のExcelを選んでください`);
+    const rowsOf = (ws, head) => { if (!ws) return []; const a = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }); if (!a.length) return []; const inv = Object.fromEntries(Object.entries(head).map(([k, v]) => [v, k])), keys = a[0].map((h) => inv[String(h).trim()] || null);
+      return a.slice(1).filter((r) => r.some((c) => c !== "" && c != null)).map((r) => Object.fromEntries(keys.map((k, i) => [k, r[i]]).filter(([k]) => k))); };
+    const num = (v) => v === "" || v == null ? null : isFinite(+v) ? +v : null, str = (v) => v == null ? "" : String(v).trim();
+    const tr = rowsOf(tws, H.tdHead), zr = rowsOf(zws, H.zdHead);
+    const year = yearFromLabel((tr.at(0) || {}).year) || S.year;
+    const trees = tr.filter((x) => str(x.site) && str(x.tno)).map((x) => {
+      const items = SCORE_ITEMS.map((_, i) => num(x["v" + (i + 1)])), iv = items.filter((v) => v != null), vit = iv.length ? Math.round(iv.reduce((p, q) => p + q, 0) / iv.length * 10) / 10 : null;
+      const forest = str(x.forest), growth = str(x.growth), sp = toKata(str(x.sp)), h = num(x.h), g = num(x.g), z = zcode(forest, growth) || (str(x.zkey).split("|")[1] || "");
+      const t = { key: treeKey(str(x.site), str(x.tno)), tno: str(x.tno), sp, site: str(x.site), forest, growth };
+      return { t, rid: str(x.id), site: str(x.site), z, forest, growth, type: str(x.type) || leafType(t), lat: num(x.lat), lon: num(x.lon), vit, cls: vit == null ? null : (CFG.vitality.find(([lt]) => vit < lt) || CFG.vitality.at(-1))[1], h, g, d: num(x.d), w: num(x.w), sl: slenderOf(h, g), items, memo: str(x.memo) }; });
+    const zones = zr.filter((x) => str(x.site) && (str(x.zkey) || (str(x.forest) && str(x.growth)))).map((x) => { const site = str(x.site), z = zcode(str(x.forest), str(x.growth)) || (str(x.zkey).split("|")[1] || "");
+      return { rid: str(x.id), site, z, label: `${siteShort(site)} ${zLabel(z)}`, short: `${siteShort(site)} ${(GK.zones.find((q) => q[0] === z) || [, , zLabel(z)])[2]}`, spacing: num(x.spacing), lightSite: num(x.lightSite), lightRef: num(x.lightRef), lowH: num(x.lowH), deadH: num(x.deadH), landform: str(x.landform), erosion: str(x.erosion), deadState: str(x.deadState), mgmt: str(x.mgmt),
+        litter: num(x.litter), slope: num(x.slope), age: num(x.age), plot: str(x.plot), vegN: num(x.vegN), herbC: num(x.herbC), shrubC: num(x.shrubC), treeC: num(x.treeC), memo: str(x.memo) }; });
+    // アプリの記録との違い（PCで直した箇所）
+    const diffs = [], same = (a, b) => (a == null || a === "") && (b == null || b === "") ? true : typeof a === "number" || typeof b === "number" ? Math.abs((+a || 0) - (+b || 0)) < 1e-6 && (a === "" || a == null) === (b === "" || b == null) : String(a) === String(b);
+    for (const x of trees) {
+      const r = (x.rid && R.get(x.rid)) || R.get(recId.chijo(x.t.key, year)), i = TIDX.get(x.t.key), t0 = i != null ? T[i] : null, what = `${siteShort(x.site)} ${x.t.tno}`;
+      if (!r && !t0) { diffs.push({ id: x.rid, site: x.site, what, field: "（アプリにない木）", app: "", file: `${x.t.tno}_${x.t.sp}`, memo: x.memo }); continue; }
+      if (t0) for (const [k, lb] of [["sp", "樹種"], ["forest", "樹林の種類"], ["growth", "生育区分"]]) { const a = k === "sp" ? t0.sp : t0[k], b = k === "sp" ? x.t.sp : x[k]; if (!same(a, b)) diffs.push({ id: x.rid, site: x.site, what, field: lb, app: a, file: b, memo: x.memo }); }
+      if (r) { const m = treeMetrics(r.ans);
+        SCORE_ITEMS.forEach((it, k) => { const a = visible(it, r.ans, {}) ? nv(r.ans[it.id]) : null, b = x.items.at(k); if (!same(a, b)) diffs.push({ id: r.id, site: x.site, what, field: it.label, app: a, file: b, memo: x.memo }); });
+        for (const [k, lb, a] of [["h", "樹高(m)", m.h], ["g", "幹周(cm)", m.g ? m.g.val : null], ["d", "地際直径(cm)", m.d ? m.d.val : null], ["w", "枝張り(m)", m.w]]) { if (!same(a, x[k])) diffs.push({ id: r.id, site: x.site, what, field: lb, app: a, file: x[k], memo: x.memo }); } }
+    }
+    for (const x of zones) { const r = (x.rid && R.get(x.rid)) || R.get(recId.gaikyo(x.site, year)), what = x.label; if (!r) { diffs.push({ id: x.rid, site: x.site, what, field: "（アプリにない調査区）", app: "", file: "", memo: x.memo }); continue; }
+      const a = r.ans, z = x.z, sp = spAvg(spVals(a, z));
+      for (const [k, lb, av] of [["spacing", "樹木間隔 平均(m)", sp === "" ? null : sp], ["lightSite", "光 調査地", nv(a[`${z}|lightSite`])], ["lightRef", "光 対照地", nv(a[`${z}|lightRef`])], ["lowH", "下枝高(m)", nv(a[`${z}|lowH`])], ["deadH", "枯れ下がり高さ(m)", nv(a[`${z}|deadH`])], ["litter", "リター(cm)", nv(a[`${z}|litter`])], ["slope", "斜面傾斜角", nv(a[`${z}|slope`])], ["age", "推定樹齢", nv(a[`${z}|age`])], ["landform", "地形", a[`${z}|landform`] || ""], ["erosion", "のり面浸食", a[`${z}|erosion`] || ""], ["deadState", "枯れの状態", a[`${z}|deadState`] || ""]])
+        if (!same(av, x[k])) diffs.push({ id: r.id, site: x.site, what, field: lb, app: av, file: x[k], memo: x.memo }); }
+    return { file: file.name, at: new Date().toISOString(), year, trees, zones, diffs };
+  }
   async function openAnalysis() {
     const d = document.createElement("div"); d.className = "an";
     const sites = siteList(); let site = S.site || "", tab = S.anTab || "bi";
-    d.innerHTML = `<div class="an-top"><button class="icon-btn" data-an="close" aria-label="閉じる">${ic("x")}</button><b>分析</b><select class="inp" id="anSite"><option value="">すべての調査地</option>${sites.map((s) => `<option${s === site ? " selected" : ""}>${esc(s)}</option>`).join("")}</select><button class="btn main mini" data-an="xlsx">${ic("down")}Excel</button></div>
+    d.innerHTML = `<div class="an-top"><button class="icon-btn" data-an="close" aria-label="閉じる">${ic("x")}</button><b>分析</b><select class="inp" id="anSite"><option value="">すべての調査地</option>${sites.map((s) => `<option${s === site ? " selected" : ""}>${esc(s)}</option>`).join("")}</select><button class="btn line mini" data-an="import" title="PCで編集した分析用Excelを読み込む">${ic("upload")}読込</button><button class="btn main mini" data-an="xlsx">${ic("down")}Excel</button></div>
+      <div id="anSrc" class="an-src"></div>
       <div class="tabs an-tabs"><button data-an-tab="bi">自由分析</button><button data-an-tab="chijo">地上部調査</button><button data-an-tab="gaikyo">概況調査</button><button data-an-tab="veg">植生調査</button><button data-an-tab="trend">経年変化</button></div><div class="an-body" id="anBody"></div>`;
     document.body.appendChild(d);
-    const biCtx = { close: () => d.remove() };
-    const render = () => { $$("[data-an-tab]", d).forEach((b) => b.classList.toggle("on", b.dataset.anTab === tab)); const host = $("#anBody", d); host.onclick = null; host.onchange = null; $("#anSite", d).hidden = tab === "bi";
+    const close = () => { d.remove(); AN_DS = null; };
+    const biCtx = { close };
+    const srcHTML = () => AN_DS ? `<div class="notebox" style="margin:6px 10px"><b>データ：読み込んだExcel「${esc(AN_DS.file)}」</b>（${fyLabel(AN_DS.year)}・樹木${AN_DS.trees.length}本・調査区${AN_DS.zones.length}か所）<br>アプリの記録との違い（PCで直した箇所）：<b>${AN_DS.diffs.length}件</b>
+        <div class="btnrow" style="margin-top:6px"><button class="btn line mini" data-an="diffs">直した箇所を見る</button><button class="btn line mini" data-an="unload">アプリの記録に戻す</button></div></div>` : "";
+    const render = () => { $("#anSrc", d).innerHTML = srcHTML(); $$("[data-an-tab]", d).forEach((b) => b.classList.toggle("on", b.dataset.anTab === tab)); const host = $("#anBody", d); host.onclick = null; host.onchange = null; $("#anSite", d).hidden = tab === "bi";
       if (tab === "bi") { biMount(host, biCtx); host.scrollTop = 0; return; }
-      const A = analyze(site); host.innerHTML = tab === "chijo" ? anChijoHTML(A) : tab === "gaikyo" ? anGaikyoHTML(A) : tab === "veg" ? anVegHTML(A) : anTrendHTML(trend(site)); paintIcons(host); host.scrollTop = 0; };
+      const A = analyze(site); host.innerHTML = tab === "chijo" ? anChijoHTML(A) : tab === "gaikyo" ? anGaikyoHTML(A) : tab === "veg" ? anVegHTML(A) : AN_DS ? `<p class="empty">読み込んだExcelで分析しているため、経年変化は表示しません。「アプリの記録に戻す」で表示できます。</p>` : anTrendHTML(trend(site)); paintIcons(host); host.scrollTop = 0; };
     $("#anSite", d).onchange = (e) => { site = e.target.value; render(); };
     d.addEventListener("click", async (e) => {
       const t = e.target.closest("[data-an-tab]"); if (t) { tab = S.anTab = t.dataset.anTab; render(); return; }
       const b = e.target.closest("[data-an]"); if (!b) return;
-      if (b.dataset.an === "close") d.remove();
-      else if (b.dataset.an === "mapvit") { d.remove(); S.colorMode = "vit"; ls.set("cm", "vit"); $$("#cmSeg button").forEach((x) => x.classList.toggle("on", x.dataset.cm === "vit")); closeSheet(); refreshMap(); toast("地図の点を活力度の判定で色分けしました（表示設定で戻せます）", 4000); }
-      else if (b.dataset.an === "xlsx") { const blob = await busy("分析結果のExcelを作成しています…", () => buildAnalysis(site)); if (blob) await saveBlob(blob, `分析_結果_${site ? fname(site) + "_" : ""}${stamp()}.xlsx`); }
+      if (b.dataset.an === "close") close();
+      else if (b.dataset.an === "import") pickFile(".xlsx", async (f) => { try { AN_DS = await busy("読み込んでいます…", () => importAnalysisExcel(f)); } catch (err) { toast(err.message, 5000); return; } if (!AN_DS) return; biCtx.A = null; render(); toast(`「${f.name}」のデータで分析します（直した箇所 ${AN_DS.diffs.length}件）`, 4000); });
+      else if (b.dataset.an === "unload") { AN_DS = null; biCtx.A = null; render(); toast("アプリの記録で分析します"); }
+      else if (b.dataset.an === "diffs") dialog({ title: `直した箇所（${AN_DS.diffs.length}件）`, body: AN_DS.diffs.length ? `<div class="antbl" style="max-height:60vh;overflow:auto"><table><thead><tr><th>調査地・番号</th><th>項目</th><th>アプリ</th><th>Excel</th><th>メモ</th></tr></thead><tbody>${AN_DS.diffs.slice(0, 500).map((x) => `<tr><td>${esc(x.what)}</td><td>${esc(x.field)}</td><td>${esc(x.app ?? "")}</td><td>${esc(x.file ?? "")}</td><td>${esc(x.memo || "")}</td></tr>`).join("")}</tbody></table></div><p class="small muted">アプリの記録は変わりません。分析とExcel出力だけに、読み込んだ値を使います。</p>` : "<p>違いはありません。</p>", ok: "閉じる", cancel: null });
+      else if (b.dataset.an === "mapvit") { close(); S.colorMode = "vit"; ls.set("cm", "vit"); $$("#cmSeg button").forEach((x) => x.classList.toggle("on", x.dataset.cm === "vit")); closeSheet(); refreshMap(); toast("地図の点を活力度の判定で色分けしました（表示設定で戻せます）", 4000); }
+      else if (b.dataset.an === "xlsx") { const blob = await busy("分析結果のExcelを作成しています…", () => buildAnalysis(site)); if (blob) await saveBlob(blob, `分析_結果_${fyShort(S.year)}_${site ? fname(site) + "_" : ""}${AN_DS ? "編集データ_" : ""}${stamp()}.xlsx`); }
     });
     render();
   }
 
-  // ---------- 分析結果のExcel ----------
+  // ---------- 分析結果のExcel（データのシート＋関数＋Excelのグラフ） ----------
+  //   「樹木データ」「調査区データ」が元データ。集計の表は関数でこの2つを参照し、グラフは集計の表を参照する。
+  //   PCで元データを直すと、集計とグラフも自動で変わる。直したファイルはアプリに読み込んで分析し直せる。
+  const TD_NAME = "樹木データ", ZD_NAME = "調査区データ";
+  const zForest = (z) => z && z[0] === "c" ? "針葉樹" : z && z[0] === "b" ? "広葉樹" : "", zGrowth = (z) => z && z[1] === "g" ? "良好" : z && z[1] === "b" ? "不良" : "";
+  const xlStr = (s) => `"${String(s).replace(/"/g, '""')}"`;
+  const nifs = (list) => (v) => list.reduceRight((acc, [lt, c]) => isFinite(lt) ? `IF(${v}<${lt},${xlStr(c)},${acc})` : xlStr(c), '""');
+  // 樹木データ・調査区データのシートを作り、列の位置を返す
+  function addDataSheets(bk, A) {
+    const C = XW.colName, trees = A.trees.slice().sort((a, b) => a.site.localeCompare(b.site, "ja") || String(a.z).localeCompare(String(b.z)) || String(a.t.tno).localeCompare(String(b.t.tno), "ja", { numeric: true }));
+    const zones = A.gk.slice().sort((a, b) => ["良好", "不良"].indexOf(zGrowth(a.z)) - ["良好", "不良"].indexOf(zGrowth(b.z)) || a.site.localeCompare(b.site, "ja") || String(a.z).localeCompare(String(b.z)));
+    const { tdCols, tdHead, zdCols, zdHead } = dataHeads();
+    const TL = Object.fromEntries(tdCols.map((k, i) => [k, C(i)])), ZL = Object.fromEntries(zdCols.map((k, i) => [k, C(i)]));
+    const tN = trees.length + 1, zN = Math.max(2, zones.length + 1);
+    const TR = (k) => `'${TD_NAME}'!$${TL[k]}$2:$${TL[k]}$${tN}`, ZR = (k) => `'${ZD_NAME}'!$${ZL[k]}$2:$${ZL[k]}$${zN}`;
+    // 樹木データ
+    const td = bk.add(TD_NAME).width(tdCols.map((k) => k === "memo" ? 30 : k === "id" ? 26 : k === "zkey" ? 18 : k === "sp" || k === "zone" ? 14 : 9));
+    td.row(0, tdCols.map((k) => tdHead[k]), 1); td.heights[0] = 40; td.freeze = [1, 10];
+    const env = new Map(zones.map((g) => [g.site + "|" + g.z, g]));
+    trees.forEach((x, i) => { const R = i + 2, r = i + 1, g = env.get(x.site + "|" + x.z) || {};
+      const vals = { id: x.rid || "", year: fyLabel(A.year), site: x.site, zkey: x.site + "|" + x.z, zone: `${siteShort(x.site)} ${zLabel(x.z)}`, forest: x.forest || "", growth: x.growth || "", type: x.type || "", tno: numOrText(x.t.tno), sp: x.t.sp || "", h: x.h ?? "", g: x.g ?? "", d: x.d ?? "", w: x.w ?? "", lat: isFinite(x.lat) ? +(+x.lat).toFixed(7) : "", lon: isFinite(x.lon) ? +(+x.lon).toFixed(7) : "", memo: x.memo || "" };
+      SCORE_ITEMS.forEach((_, k) => { vals["v" + (k + 1)] = x.items.at(k) ?? ""; });
+      const it0 = TL.v1, it1 = TL["v" + SCORE_ITEMS.length];
+      vals.vit = { f: `IF(COUNT(${it0}${R}:${it1}${R})=0,"",ROUND(AVERAGE(${it0}${R}:${it1}${R}),1))`, v: x.vit ?? "" };
+      vals.cls = { f: `IF(${TL.vit}${R}="","",${nifs(CFG.vitality)(TL.vit + R)})`, v: x.cls || "" };
+      vals.sl = { f: `IF(OR(${TL.h}${R}="",${TL.g}${R}="",${TL.g}${R}=0),"",ROUND(${TL.h}${R}*100/(${TL.g}${R}/PI()),1))`, v: x.sl ?? "" };
+      vals.slc = { f: `IF(${TL.sl}${R}="","",${nifs(SLC)(TL.sl + R)})`, v: slClass(x.sl) || "" };
+      for (const [k, zk] of [["e_density", "density"], ["e_light", "light"], ["e_dieback", "dieback"], ["e_lowH", "lowH"], ["e_litter", "litter"], ["e_slope", "slope"], ["e_age", "age"], ["e_landform", "landform"], ["e_erosion", "erosion"], ["e_deadState", "deadState"]]) {
+        const m = `INDEX(${ZR(zk)},MATCH($${TL.zkey}${R},${ZR("zkey")},0))`; vals[k] = { f: `IFERROR(IF(${m}="","",${m}),"")`, v: g[zk] ?? "" }; }
+      tdCols.forEach((k, c) => td.set(r, c, vals[k] ?? "", ["vit", "cls", "sl", "slc"].includes(k) || k.startsWith("e_") ? 7 : 2)); });
+    // 調査区データ
+    const zd = bk.add(ZD_NAME).width(zdCols.map((k) => k === "zkey" || k === "id" ? 22 : k === "memo" || k === "mgmt" ? 24 : k === "zone" ? 18 : 10));
+    zd.row(0, zdCols.map((k) => zdHead[k]), 1); zd.heights[0] = 40; zd.freeze = [1, 4];
+    zones.forEach((g, i) => { const R = i + 2, r = i + 1, L = ZL;
+      const v = { zkey: g.site + "|" + g.z, year: fyLabel(A.year), site: g.site, zone: `${siteShort(g.site)} ${zLabel(g.z)}`, forest: zForest(g.z), growth: zGrowth(g.z), spacing: g.spacing ?? "", lightSite: g.lightSite ?? "", lightRef: g.lightRef ?? "", lowH: g.lowH ?? "", deadH: g.deadH ?? "",
+        landform: g.landform || "", erosion: g.erosion || "", deadState: g.deadState || "", mgmt: g.mgmt || "", litter: g.litter ?? "", slope: g.slope ?? "", age: g.age ?? "", plot: g.plot || "", vegN: g.vegN ?? "", herbC: g.herbC ?? "", shrubC: g.shrubC ?? "", treeC: g.treeC ?? "", id: g.rid || "", memo: g.memo || "" };
+      v.density = { f: `IF(OR(${L.spacing}${R}="",${L.spacing}${R}=0),"",ROUND(10000/${L.spacing}${R}^2,0))`, v: g.density ?? "" };
+      v.light = { f: `IF(OR(${L.lightSite}${R}="",${L.lightRef}${R}="",${L.lightRef}${R}=0),"",ROUND(${L.lightSite}${R}/${L.lightRef}${R}*100,1))`, v: g.light ?? "" };
+      v.hMean = { f: `IFERROR(ROUND(AVERAGEIFS(${TR("h")},${TR("zkey")},$${L.zkey}${R}),2),"")`, v: g.hMean != null ? Math.round(g.hMean * 100) / 100 : "" };
+      v.crown = { f: `IF(OR(${L.hMean}${R}="",${L.lowH}${R}=""),"",${L.hMean}${R}-${L.lowH}${R})`, v: g.crown ?? "" };
+      v.deadLen = { f: `IF(OR(${L.deadH}${R}="",${L.lowH}${R}=""),"",MAX(0,${L.deadH}${R}-${L.lowH}${R}))`, v: g.deadLen ?? "" };
+      v.dieback = { f: `IF(OR(${L.crown}${R}="",${L.deadLen}${R}=""),"",IF(${L.crown}${R}<=0,"",ROUND(${L.deadLen}${R}/${L.crown}${R}*100,1)))`, v: g.dieback ?? "" };
+      v.vitMean = { f: `IFERROR(ROUND(AVERAGEIFS(${TR("vit")},${TR("zkey")},$${L.zkey}${R}),2),"")`, v: g.vitMean != null ? Math.round(g.vitMean * 100) / 100 : "" };
+      v.slMean = { f: `IFERROR(ROUND(AVERAGEIFS(${TR("sl")},${TR("zkey")},$${L.zkey}${R}),1),"")`, v: g.slMean != null ? Math.round(g.slMean * 10) / 10 : "" };
+      v.n = { f: `COUNTIFS(${TR("zkey")},$${L.zkey}${R},${TR("vit")},">=0")`, v: g.n || 0 };
+      zdCols.forEach((k, c) => zd.set(r, c, v[k] ?? "", ["density", "light", "hMean", "crown", "deadLen", "dieback", "vitMean", "slMean", "n"].includes(k) ? 7 : 2)); });
+    return { TL, ZL, TR, ZR, tN, zN, trees, zones };
+  }
+  // 条件（調査地・樹種・生育区分など）を関数の式とJSの両方で扱う
+  function condF(D, conds) { // conds: [[key, value or "*"]] → COUNTIFS/AVERAGEIFS の条件、配列式の条件
+    const cf = conds.map(([k, v]) => `${D.TR(k)},${typeof v === "object" ? v.ref : xlStr(v)}`).join(","), arr = conds.map(([k, v]) => typeof v === "object" ? `((${v.ref}="*")+(${D.TR(k)}=${v.ref})>0)` : `(${D.TR(k)}=${xlStr(v)})`).join("*");
+    return { cf, arr };
+  }
   async function buildAnalysis(site) {
-    const A = analyze(site), bk = XW.book();
-    const img = async (sh, svg, r, c) => { const p = await svgToPng(svg); if (p) (sh.images = sh.images || []).push({ buf: p.buf, w: p.w, h: p.h, r, c }); return p ? Math.ceil(p.h / 20) + 1 : 0; };
-    const tbl = (sh, r0, head, rows, hl) => { sh.row(r0, head, 1); rows.forEach((row, i) => { sh.row(r0 + 1 + i, row.map((v) => typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v) ? +v : v ?? ""), 2); if (hl) row.forEach((_, j) => { if (hl(i, j)) sh.set(r0 + 1 + i, j, typeof row.at(j) === "string" && /^-?\d+(\.\d+)?$/.test(row.at(j)) ? +row.at(j) : row.at(j), 9); }); }); return r0 + rows.length + 2; };
-    const nb = (v, d = 2) => v == null || !isFinite(v) ? "" : Math.round(v * 10 ** d) / 10 ** d;
-    // 注意事項
-    const n0 = bk.add("はじめに").width([100]); n0.landscape = false;
-    [`${CFG.appTitle} 分析結果`, `対象：${site || "すべての調査地"}　作成：${new Date().toLocaleString("ja-JP")}　作成者：${S.name}`, "",
-      "・活力度は0（良好）〜4（不良）。各項目の評価の平均を小数1位に四捨五入した値です。",
-      "・良好区と不良区の比較はマン・ホイットニーのU検定（順位による2群の比較）。各群3本以上で計算し、合計40本以下は正確検定、それより多いときは正規近似です。",
-      "・同じ表の中で何回も検定するため、ホルム法で補正したp値（補正p）で判定します（「全体」の行は補正の対象外）。補正p<0.05 で「差がある可能性が高い」、<0.01 で「非常に高い」と表示します。",
-      "・効果量δ（クリフのデルタ、−1〜1）は差の大きさです。負の値は良好区の方が良い（活力度が低い）ことを示します。|δ|が0.147未満＝ほぼなし、0.33未満＝小、0.474未満＝中、それ以上＝大。",
-      "・樹木のタイプ（常緑広葉樹・落葉広葉樹・針葉樹）どうしは、クラスカル・ウォリス検定で全体の差を、スティール・ドゥワス法でどの組に差があるかを見ます。調査地や生育区分の違いも混ざるため参考程度にしてください。",
-      "・形状比＝樹高(cm)÷胸高直径(cm)（胸高直径＝幹周÷π）。値が大きいほど幹が細長く倒れやすいとされます。区分は目安です。",
-      "・場所による偏り：外周（樹木データの一番外側の木を結んだ線）からの距離と活力度の順位相関、モランのI（最も近い4本との似かた）を調べます。",
-      "・経年変化：同じ木の前年度と今年度の活力度の差を、ウィルコクソンの符号付順位検定で調べます。",
-      "・環境条件と健全度は、調査区ごとの値で比べます。植栽密度＝10000÷(樹木間隔の平均)²、下枝の枯れ割合＝(枯れ下がり高さ−下枝高)÷(平均樹高−下枝高)×100。調査区が少ないため傾向の目安です。",
-      "・良好区・不良区は木の状態を見て分けた区分のため、活力度に差が出るのはある意味当然です。検定は「区分と評価が一致しているか」の確認に近く、原因までは示しません。",
-      "・良好区・不良区が調査地ごとに1か所ずつの場合、差が「良好・不良」によるのか「場所の違い」によるのかは区別できません。報告では「この2か所の比較」として書くのが安全です。",
-      "・概況調査と活力度の関係はスピアマンの順位相関係数ρ（-1〜1）。調査区が4つ以上で計算します。",
-      "・植生の類似度：Sørensen＝2×共通種数÷(2つの種数の合計)、Jaccard＝共通種数÷(どちらかに出た種数)。1に近いほど似ています。",
-      "・組成表の並べ替えは、被度を％（r=0.1、+=0.5、1=5、2=17.5、3=37.5、4=62.5、5=87.5）に換えた相反平均法です。",
-      "・樹種ごとの結果は、調査済みが3本未満の樹種は参考程度にしてください。",
-      "・本数・調査区数が少ないと、検定や相関の結果ははっきり出にくくなります。数字だけで判断せず、現地の状況と合わせて読んでください。"].forEach((t, i) => n0.set(i, 0, t, i === 0 ? 4 : 0));
-    // 地上部
-    const s1 = bk.add("地上部_活力度集計").width([26, 10, 10, 10, ...VCLS.map(() => 9), 12, 12]);
-    let r = await img(s1, chartStack(A.groups), 0, 0);
-    r = tbl(s1, r, ["調査区", "調査済み", "全本数", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)"].filter((_, i) => i !== 4 || true), A.groups.map((g) => [g.label, g.n, g.nAll, nb(g.vitMean), nb(g.vitSd), ...VCLS.map((c) => g.counts[c]), nb(g.hMean, 1), nb(g.gMean, 1)]));
-    s1.cols = [26, 9, 9, 11, 9, ...VCLS.map(() => 9), 12, 12];
-    const s2 = bk.add("地上部_良好不良比較").width([20, 8, 8, 11, 11, 11, 11, 9, 40, 10, 10, 9, 11, 11, 9]);
-    r = await img(s2, chartCompare(A.compare), 0, 0);
-    const pv = (p) => p == null ? "" : p < 0.001 ? "<0.001" : nb(p, 3);
-    tbl(s2, r, ["比較", "本数 良好", "本数 不良", "活力度 良好 平均", "活力度 良好 SD", "活力度 不良 平均", "活力度 不良 SD", "p値", "補正p（ホルム）", "効果量δ", "効果の大きさ", "判定", "樹高 良好(m)", "樹高 不良(m)", "p値（樹高）", "幹周 良好(cm)", "幹周 不良(cm)", "p値（幹周）"],
-      A.compare.map((c) => [c.label, c.nG, c.nB, nb(c.vitG.m), nb(c.vitG.s), nb(c.vitB.m), nb(c.vitB.s), pv(c.tVit.p), c.label === "全体" ? "対象外" : pv(c.pAdj), nb(c.tVit.delta), deltaWord(c.tVit.delta), c.tVit.p == null ? pWord(c.tVit) : pWord2(c.pAdj), nb(c.hG.m, 1), nb(c.hB.m, 1), pv(c.tH.p), nb(c.gG.m, 1), nb(c.gB.m, 1), pv(c.tG.p)]),
-      (i, j) => j === 8 && A.compare.at(i).label !== "全体" && A.compare.at(i).pAdj != null && A.compare.at(i).pAdj < 0.05);
-    s2.cols = [20, 8, 8, 11, 11, 11, 11, 9, 11, 9, 9, 26, 10, 10, 9, 11, 11, 9];
-    const gsN = A.groups.filter((g) => g.n), worstIdx = gsN.map((g) => { let k = -1, mx = -1; g.itemMeans.forEach((v, i) => { if (v != null && v > mx) { mx = v; k = i; } }); return k; });
-    const s3 = bk.add("地上部_項目別").width([30, ...gsN.map(() => 16)]);
-    s3.set(0, 0, "項目別の平均（赤は、その調査区で最も評価が悪い項目）", 4);
-    tbl(s3, 2, ["項目", ...gsN.map((g) => g.label)], SCORE_ITEMS.map((it, i) => [it.label, ...gsN.map((g) => nb(g.itemMeans.at(i)))]), (i, j) => j > 0 && worstIdx.at(j - 1) === i);
-    // 樹種ごと
-    const sS = bk.add("地上部_樹種別").width([18, 9, 9, 11, 9, ...VCLS.map(() => 9), 12, 12, 26, 11, 11, 9, 9, 11, 34]);
-    r = await img(sS, chartStack(A.species, "活力度の判定の内訳（樹種ごと）"), 0, 0);
-    tbl(sS, r, ["樹種", "調査済み", "全本数", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)", "最も悪い項目", "良好区 平均", "不良区 平均", "良好区 本数", "不良区 本数", "p値", "補正p（ホルム）", "効果量δ", "効果の大きさ", "判定"],
-      A.species.map((g) => [g.sp, g.n, g.nAll, nb(g.vitMean), nb(g.vitSd), ...VCLS.map((c) => g.counts[c]), nb(g.hMean, 1), nb(g.gMean, 1), g.worst >= 0 ? SCORE_ITEMS.at(g.worst).label : "", nb(g.vitG), nb(g.vitB), g.nG, g.nB, pv(g.test.p), pv(g.pAdj), nb(g.test.delta), deltaWord(g.test.delta), g.test.p == null ? pWord(g.test) : pWord2(g.pAdj)]),
-      (i, j) => j === 5 + VCLS.length + 8 && A.species.at(i).pAdj != null && A.species.at(i).pAdj < 0.05);
-    // 樹木のタイプごと
-    const sT = bk.add("地上部_樹木タイプ別").width([14, 9, 9, 11, 9, 9, ...VCLS.map(() => 9), 12, 12, 26, 11, 11, 9, 9, 11, 9, 9, 30]);
-    r = await img(sT, chartStack(A.types, "活力度の判定の内訳（樹木のタイプごと）"), 0, 0);
-    r = tbl(sT, r, ["タイプ", "調査済み", "全本数", "活力度 平均", "中央値", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)", "最も悪い項目", "良好区 平均", "不良区 平均", "良好区 本数", "不良区 本数", "p値", "補正p（ホルム）", "効果量δ", "判定"],
-      A.types.map((g) => [g.type, g.n, g.nAll, nb(g.vitMean), nb(g.med), nb(g.vitSd), ...VCLS.map((c) => g.counts[c]), nb(g.hMean, 1), nb(g.gMean, 1), g.worst >= 0 ? SCORE_ITEMS.at(g.worst).label : "", nb(g.vitG), nb(g.vitB), g.nG, g.nB, pv(g.test.p), pv(g.pAdj), nb(g.test.delta), g.test.p == null ? pWord(g.test) : pWord2(g.pAdj)]),
-      (i, j) => j === 6 + VCLS.length + 8 && A.types.at(i).pAdj != null && A.types.at(i).pAdj < 0.05);
-    r = tbl(sT, r, ["タイプ", "含まれる樹種"], A.types.map((g) => [g.type, g.sps]));
-    if (A.typeKW) { sT.set(r++, 0, `タイプどうしの比較：クラスカル・ウォリス検定 H＝${nb(A.typeKW.H)}、p＝${pv(A.typeKW.p)} → ${pWord2(A.typeKW.p)}`, 6);
-      r = tbl(sT, r, ["組み合わせ", "平均 1", "平均 2", "p値（スティール・ドゥワス）", "効果量δ", "判定"], A.typeKW.pairs.map((p) => [`${p.a} − ${p.b}`, nb(p.ma), nb(p.mb), pv(p.p), nb(p.delta), pWord2(p.p)])); }
-    else if (A.type2) sT.set(r++, 0, `タイプどうしの比較（${A.type2.a}と${A.type2.b}）：U検定 p＝${pv(A.type2.p)}、効果量δ＝${nb(A.type2.delta)} → ${pWord(A.type2)}`, 6);
-    sT.set(r + 1, 0, "常緑・落葉の区分は設定の「常緑広葉樹の一覧」で決めています（一覧にない広葉樹は落葉広葉樹）。タイプどうしの比較は調査地や生育区分の違いも混ざるため参考程度にしてください。", 8);
-    // 形状比・大きさ・場所
-    const sL = bk.add("地上部_形状比").width([24, 8, 11, 9, ...SLC.map(() => 10), 16]);
-    let rl = tbl(sL, 0, ["調査区", "本数", "形状比 平均", "中央値", ...SLC.map(([, c]) => c)], A.groups.filter((g) => g.slN).map((g) => [g.label, g.slN, nb(g.slMean, 1), nb(g.slMed, 1), ...SLC.map(([, c]) => g.slCounts[c])]));
-    rl = tbl(sL, rl, ["タイプ", "本数", "形状比 平均", "中央値", ...SLC.map(([, c]) => c), "活力度との順位相関ρ"], A.slTypes.map((t) => [t.type, t.n, nb(t.m, 1), nb(t.med, 1), ...SLC.map(([, c]) => t.counts[c]), nb(t.rho)]));
-    sL.set(rl, 0, `形状比＝樹高(cm)÷胸高直径(cm)。区分は目安（${SLC.map(([lt, c]) => `${c}${isFinite(lt) ? `：${lt}未満` : ""}`).join("、")}）。`, 8);
-    await img(sL, chartPts(A.slAll.filter((x) => x.vit != null).map((x) => ({ x: x.sl, y: x.vit, c: x.type })), "形状比", "活力度（上ほど不良）", "形状比と活力度（1本ずつ）", spearman(A.slAll.map((x) => x.sl), A.slAll.map((x) => x.vit)), true), rl + 2, 0);
-    const sZ = bk.add("地上部_大きさと活力度").width([18, 8, 14, 14, 16]);
-    let rz = tbl(sZ, 0, ["樹種", "本数", "樹高と活力度 ρ", "幹周と活力度 ρ", "形状比と活力度 ρ"], A.sizeRows.map((r) => [r.label, r.n, nb(r.rH), nb(r.rG), nb(r.rS)]));
-    rz += await img(sZ, chartPts(A.done.filter((x) => x.g != null).map((x) => ({ x: x.g, y: x.vit, c: x.type })), "幹周（cm）", "活力度（上ほど不良）", "幹周と活力度（1本ずつ）", spearman(A.done.map((x) => x.g), A.done.map((x) => x.vit)), true), rz, 0);
-    await img(sZ, chartPts(A.done.filter((x) => x.h != null).map((x) => ({ x: x.h, y: x.vit, c: x.type })), "樹高（m）", "活力度（上ほど不良）", "樹高と活力度（1本ずつ）", spearman(A.done.map((x) => x.h), A.done.map((x) => x.vit)), true), rz, 0);
-    const sP = bk.add("地上部_場所による偏り").width([14, 8, 14, 14, 9, 26, 16, 16, 16]);
-    const rp = tbl(sP, 0, ["調査地", "本数", "外周からの距離と活力度 ρ", "モランのI", "p値", "判定", "外周から5m未満 平均", "5〜15m 平均", "15m以上 平均"], A.spatial.map((x) => [siteShort(x.site), x.n, nb(x.rhoEdge), x.moran ? nb(x.moran.I) : "", x.moran ? pv(x.moran.p) : "", x.moran ? (x.moran.p < 0.05 && x.moran.I > 0 ? "似た状態の木が集まっている" : "はっきりした集まりはない") : "本数不足", ...x.bands.map((b) => b.n ? `${nb(b.m)}（${b.n}本）` : "")]));
-    sP.set(rp, 0, "外周＝その調査地の樹木データの一番外側の木を結んだ線（林縁の目安）。モランのI：それぞれ最も近い4本と比べた活力度の似かた（499回の並べ替えでp値）。", 8);
-    if (A.sitesC.length > 1) { const sX = bk.add("地上部_樹種×調査地").width([18, ...A.sitesC.flatMap(() => [11, 8])]);
-      sX.set(0, 0, "樹種×調査地：活力度の平均と本数", 4);
-      tbl(sX, 2, ["樹種", ...A.sitesC.flatMap((st) => [`${siteShort(st)} 平均`, "本数"])], A.species.map((g) => [g.sp, ...A.sitesC.flatMap((st) => [nb(g.bySite[st].m), g.bySite[st].n || ""])])); }
-    // 概況：環境条件と健全度
-    const s4 = bk.add("環境条件と健全度").width([26, 11, 10, 12, 10, 9, 11, 11, 10, 11, 10, 12, 9, 9, 10, 26, 10, 8]);
-    let r4 = tbl(s4, 0, ["調査区", "植栽密度(本/ha)", "樹木間隔 平均(m)", "相対光量子束密度(%)", "平均樹高(m)", "下枝高(m)", "枯れ下がり高さ(m)", "枝葉のある範囲(m)", "枯れ枝の範囲(m)", "下枝の枯れ割合(%)", "枯れの状態", "地形", "斜面傾斜角(°)", "リター(cm)", "のり面浸食", "実施した管理", "活力度 平均", "地上部の本数"],
-      A.gk.map((g) => [g.label, nb(g.density, 0), nb(g.spacing), nb(g.light, 1), nb(g.hMean, 1), nb(g.lowH, 1), nb(g.deadH, 1), nb(g.crown, 1), nb(g.deadLen, 1), nb(g.dieback, 1), g.deadState, g.landform, nb(g.slope, 0), nb(g.litter, 1), g.erosion, g.mgmt, nb(g.vitMean), g.n]));
-    s4.set(r4, 0, "植栽密度＝10000÷(樹木間隔の平均)²。枝葉のある範囲＝平均樹高（地上部調査）−下枝高、枯れ枝の範囲＝枯れ下がり高さ−下枝高、下枝の枯れ割合＝枯れ枝の範囲÷枝葉のある範囲×100。", 8);
-    const ev = A.envVars, sC = bk.add("環境条件の相関").width([22, ...ev.map(() => 12)]);
-    sC.set(0, 0, "環境条件どうし・健全度との相関（スピアマンの順位相関係数ρ。赤は|ρ|≧0.7）", 4);
-    if (ev.length >= 2) tbl(sC, 2, ["", ...ev.map((v) => v.label)], ev.map((a, i) => [a.label, ...ev.map((b, j) => i === j ? "" : A.corr.at(i).at(j) == null ? `（${A.corrN.at(i).at(j)}区）` : nb(A.corr.at(i).at(j)))]), (i, j) => j > 0 && i !== j - 1 && A.corr.at(i).at(j - 1) != null && Math.abs(A.corr.at(i).at(j - 1)) >= 0.7);
-    const s5 = bk.add("環境条件の散布図").width([26, 14, 14, 14]);
-    r = 0; for (const rr of A.rel) { const h = await img(s5, chartXY(rr.pts, rr.xk, rr.yk, `${envLabel(rr.xk).replace(/\(.*\)/, "")}と${envLabel(rr.yk).replace(/\(.*\)/, "")}`, rr.rho), r, 0); if (!h) { s5.set(r, 0, `${envLabel(rr.xk)}と${envLabel(rr.yk)}：両方の値がある調査区が2つ以上必要です`, 0); r += 2; } else r += h; }
-    const sK = bk.add("環境条件の区分別").width([20, 10, 12, 14, 14, 16]);
-    let rk = 0; for (const c of A.cats) { sK.set(rk++, 0, c.label, 6); rk = tbl(sK, rk, [c.label, "調査区数", "活力度 平均", "下枝の枯れ割合(%)", "植栽密度(本/ha)", "相対光量子束密度(%)"], c.rows.map((x) => [x.v, x.n, nb(x.vit), nb(x.dieback, 1), nb(x.density, 0), nb(x.light, 1)])); }
-    // 植生と環境条件
-    const sV = bk.add("植生と環境条件").width([24, 16, 9, 12, 12, 12, 14, 12, 14, 10]);
-    tbl(sV, 0, ["調査区", "植生調査区", "出現種数", "草本層 植被率(%)", "低木層 植被率(%)", "高木層 植被率(%)", "相対光量子束密度(%)", "植栽密度(本/ha)", "下枝の枯れ割合(%)", "活力度 平均"], A.gk.filter((x) => x.plot).map((x) => [x.label, x.plot, x.vegN ?? "", nb(x.herbC, 0), nb(x.shrubC, 0), nb(x.treeC, 0), nb(x.light, 1), nb(x.density, 0), nb(x.dieback, 1), nb(x.vitMean)]));
-    // 植生
-    const P = A.plots;
-    const s6 = bk.add("植生_種数と優占種").width([16, 16, 10, ...VEG.layers.map(() => 18)]);
-    tbl(s6, 0, ["調査区", "樹林・生育", "出現種数", ...VEG.layers.map(([, n]) => n + " 優占種")], P.map((p) => [p.no, `${p.ans.forest || ""}・${p.ans.growth || ""}`, new Set((p.sp || []).map((s) => s.n)).size, ...VEG.layers.map(([l]) => ((p.layers || {})[l] || {}).d || "")]));
-    const s7 = bk.add("植生_良好不良の比較").width([18, 24, 10, 10, 8, 10, 10, 40, 40]);
-    tbl(s7, 0, ["比較", "調査区（良好／不良）", "種数 良好", "種数 不良", "共通種", "Sørensen", "Jaccard", "良好区だけの種", "不良区だけの種"], A.pairs.map((p) => [p.label, `${p.good}／${p.bad}`, p.nG, p.nB, p.common.length, nb(p.sor), nb(p.jac), p.onlyG.join("・"), p.onlyB.join("・")]));
-    const s8 = bk.add("植生_類似度").width([16, ...P.map(() => 10)]);
-    r = await img(s8, chartHeat(P, A.sor, "類似度（Sørensen）"), 0, 0);
-    s8.set(r, 0, "Sørensen", 4); r = tbl(s8, r + 1, ["調査区", ...P.map((p) => p.no)], P.map((p, i) => [p.no, ...P.map((_, j) => nb(A.sor.at(i).at(j)))]));
-    s8.set(r, 0, "Jaccard", 4); tbl(s8, r + 1, ["調査区", ...P.map((p) => p.no)], P.map((p, i) => [p.no, ...P.map((_, j) => nb(A.jac.at(i).at(j)))]));
-    const ra = A.ra, s9 = bk.add("植生_組成表（並べ替え）").width([10, 22, ...ra.plotOrder.map(() => 9)]);
-    s9.row(0, ["階層", "種名", ...ra.plotOrder.map((i) => P.at(i).no)], 1); s9.freeze = [1, 2];
-    ra.keyOrder.forEach((j, k) => { const key = ra.keys.at(j); s9.row(k + 1, [LAYER_JP[key.l], key.n], 2); ra.plotOrder.forEach((i, c) => { const s = (P.at(i).sp || []).find((x) => x.l + "|" + x.n === key.k); s9.set(k + 1, c + 2, s ? bb(s) : "", s ? 7 : 2); }); });
-    // 経年変化
-    const TR = trend(site), sY = bk.add("経年変化").width([24, 8, 11, 11, 9, 16, 12, 12, 9, 26]);
-    if (!TR.ok) sY.set(0, 0, "比べられる前の年度の記録がありません（年度を切り替えて調査すると、前年度との比較と推移を出力します）。", 0);
-    else {
-      let ry = 0; sY.set(ry++, 0, `前年度との比較（${fyLabel(TR.prevY)} → ${fyLabel(S.year)}、同じ木どうし）`, 4); ry++;
-      ry = tbl(sY, ry, ["区分", "本数", `活力度 ${fyShort(TR.prevY)}`, `活力度 ${fyShort(S.year)}`, "変化", "良化／同じ／悪化（本）", "樹高の伸び(m)", "幹周の伸び(cm)", "p値", "判定"], [TR.overall, ...TR.byType, ...TR.byZone].map((x) => [x.label, x.n, nb(x.v0), nb(x.v1), nb(x.dv), `${x.better}／${x.same}／${x.worse}`, nb(x.dh), nb(x.dg, 1), x.test.p == null ? "本数不足" : pv(x.test.p), x.test.p == null ? "" : pWord2(x.test.p)]));
-      sY.set(ry++, 0, "検定はウィルコクソンの符号付順位検定。活力度の変化がマイナスなら良くなっています。", 8); ry++;
-      ry += await img(sY, chartLines(TR.years, TR.series, "活力度の平均の推移"), ry, 0);
-      ry = tbl(sY, ry, ["調査区", ...TR.years.map(fyShort)], TR.series.map((x) => [x.label, ...x.vals.map((v) => nb(v))]));
-      tbl(sY, ry, ["調査区", ...TR.years.flatMap((y) => [`${fyShort(y)} 植栽密度`, `${fyShort(y)} 光環境(%)`, `${fyShort(y)} 枯れ割合(%)`])], TR.env.map((r) => [r.label, ...TR.years.flatMap((_, i) => [nb(r.density.at(i), 0), nb(r.light.at(i), 1), nb(r.dieback.at(i), 1)])]));
+    const A = analyze(site), bk = XW.book(), now = new Date(), nb = (v, d = 2) => v == null || !isFinite(v) ? "" : Math.round(v * 10 ** d) / 10 ** d, pv = (p) => p == null ? "" : p < 0.001 ? "<0.001" : nb(p, 3);
+    const src = AN_DS ? `読み込んだExcel「${AN_DS.file}」（${new Date(AN_DS.at).toLocaleString("ja-JP")} 読み込み）` : `アプリの記録（${now.toLocaleString("ja-JP")} 時点）`;
+    // はじめに
+    const n0 = bk.add("はじめに").width([110]); n0.landscape = false;
+    [[`${CFG.appTitle} 分析結果（${fyLabel(A.year)}）`, 4], [`対象：${site || "すべての調査地"}　作成：${now.toLocaleString("ja-JP")}　作成者：${S.name}　アプリの版：${CFG.version}`, 0], [`データの出どころ：${src}`, 0], ["", 0],
+      ["【このファイルの仕組み】", 6],
+      ["・「樹木データ」「調査区データ」の2シートが元データです。集計の表は関数でこの2シートを参照し、グラフは集計の表や元データのセルを参照しています。", 0],
+      ["・元データの値（評価①〜⑦、樹高、幹周、生育区分、樹木間隔、光の測定値、下枝高など）をPCで直すと、活力度・判定・形状比・植栽密度・枯れ割合・集計・グラフが自動で計算し直されます。", 0],
+      ["・直した理由は各シートの「メモ」列に書いてください。「内部ID」列は、アプリの記録と結び付けるための番号なので、消したり変えたりしないでください。", 0],
+      ["・直したファイルは、アプリの「分析 → Excelから読み込む」で読み込むと、その値で分析し直せます。アプリの記録との違い（直した箇所）は「編集の記録」として一覧になります。", 0],
+      ["・p値・順位相関係数ρ・類似度などの統計の値は、このファイルを作った時点の値です（関数ではないため、データを直しても変わりません）。直したデータで計算し直すには、アプリに読み込み直してください。", 0], ["", 0],
+      ["【計算方法】", 6],
+      ["・活力度＝①〜⑦の平均（空欄は除く）を小数1位に四捨五入。判定：" + CFG.vitality.map(([lt, c]) => `${c}${isFinite(lt) ? `（${lt}未満）` : ""}`).join("、") + "。", 0],
+      ["・形状比＝樹高(cm)÷胸高直径(cm)、胸高直径＝幹周÷π。区分：" + SLC.map(([lt, c]) => `${c}${isFinite(lt) ? `（${lt}未満）` : ""}`).join("、") + "（目安）。", 0],
+      ["・植栽密度＝10000÷(樹木間隔の平均)²。相対光量子束密度＝調査地÷対照地×100。枝葉のある範囲＝平均樹高−下枝高、枯れ枝の範囲＝枯れ下がり高さ−下枝高、下枝の枯れ割合＝枯れ枝の範囲÷枝葉のある範囲×100。", 0],
+      ["・良好と不良の比較はマン・ホイットニーのU検定（各3本以上、合計40本以下は正確検定）。p値は同じ表の中でホルム法で補正した値も示します。効果量δ（−1〜1）は差の大きさ。", 0],
+      ["・環境条件の相関：「相関（関数）」はピアソンの相関係数（CORREL関数、データを直すと変わる）、「順位相関ρ」はスピアマンの順位相関係数（出力時の値）。調査区が少ないため傾向の目安です。", 0],
+      ["・良好区・不良区は木の状態で分けた区分のため、差が出るのはある意味当然です。また調査地ごとに1か所ずつの場合、差が場所の違いによるのかは区別できません。", 0]].forEach(([t, st], i) => n0.set(i, 0, t, st));
+    const D = addDataSheets(bk, A);
+    const T = D.trees, sites = [...new Set(T.map((x) => x.site))].sort((a, b) => a.localeCompare(b, "ja"));
+    // ---------- 集計：良好と不良（調査地全体・調査地ごと、その中で樹種ごと） ----------
+    const sG = bk.add("集計_良好不良").width([16, 14, 9, 10, 10, 9, 10, 10, 11, 11, 11, 12, 24]);
+    const METRICS = [["vit", "活力度（0良好〜4不良）", 0, 4], ["sl", "形状比", null, null], ["h", "樹高(m)", null, null], ["g", "幹周(cm)", null, null]];
+    let r = 0; sG.set(r++, 0, "良好と不良の比較（関数で集計。元データを直すと変わります。p値・δは出力時の値）", 4); r++;
+    for (const [mk, ml, mn, mx] of METRICS) {
+      sG.set(r++, 0, ml, 6);
+      const head = ["調査地", "樹種", "良好 本数", "良好 平均", "良好 標準偏差", "不良 本数", "不良 平均", "不良 標準偏差", "差（不良−良好）", "p値（出力時）", "補正p（出力時）", "効果量δ（出力時）", "判定（出力時）"];
+      sG.row(r, head, 1); sG.heights[r] = 32; const h0 = r; r++;
+      const rows = [["全体", "全樹種"], ...sites.map((s) => [s, "全樹種"])], spRows = [];
+      for (const sc of ["全体", ...sites]) { const xs = T.filter((x) => sc === "全体" || x.site === sc); const sps = [...new Set(xs.map((x) => x.t.sp).filter(Boolean))].sort((a, b) => xs.filter((x) => x.t.sp === b).length - xs.filter((x) => x.t.sp === a).length); sps.forEach((sp) => spRows.push([sc, sp])); }
+      const all = [...rows, ...spRows], first = r;
+      const get = (sc, sp, gr) => T.filter((x) => (sc === "全体" || x.site === sc) && (sp === "全樹種" || x.t.sp === sp) && x.growth === gr).map((x) => mk === "vit" ? x.vit : x[mk]).filter((v) => v != null && isFinite(v));
+      const tests = all.map(([sc, sp]) => mwu(get(sc, sp, "良好"), get(sc, sp, "不良"))), adj = holm(tests.map((t) => t.p));
+      all.forEach(([sc, sp], i) => { const R = r + 1, A_ = `$A${R}`, B_ = `$B${R}`, gv = get(sc, sp, "良好"), bv = get(sc, sp, "不良"), t = tests.at(i);
+        const cs = (gr) => { const site = { ref: `IF(${A_}="全体","*",${A_})` }, sp_ = { ref: `IF(${B_}="全樹種","*",${B_})` };
+          const cf = `${D.TR("site")},${site.ref},${D.TR("sp")},${sp_.ref},${D.TR("growth")},${xlStr(gr)}`, arr = `((${A_}="全体")+(${D.TR("site")}=${A_})>0)*((${B_}="全樹種")+(${D.TR("sp")}=${B_})>0)*(${D.TR("growth")}=${xlStr(gr)})*ISNUMBER(${D.TR(mk)})`; return { cf, arr }; };
+        const G = cs("良好"), Bd = cs("不良"), dd = mk === "vit" ? 2 : 1;
+        sG.row(r, [sc === "全体" ? "全体" : sc, sp,
+          { f: `COUNTIFS(${G.cf},${D.TR(mk)},">=0")`, v: gv.length }, { f: `IFERROR(ROUND(AVERAGEIFS(${D.TR(mk)},${G.cf}),${dd}),"")`, v: nb(avg(gv), dd) }, { f: `IFERROR(ROUND(_xlfn.STDEV.S(IF(${G.arr},${D.TR(mk)})),${dd}),"")`, a: true, v: nb(sdv(gv), dd) },
+          { f: `COUNTIFS(${Bd.cf},${D.TR(mk)},">=0")`, v: bv.length }, { f: `IFERROR(ROUND(AVERAGEIFS(${D.TR(mk)},${Bd.cf}),${dd}),"")`, v: nb(avg(bv), dd) }, { f: `IFERROR(ROUND(_xlfn.STDEV.S(IF(${Bd.arr},${D.TR(mk)})),${dd}),"")`, a: true, v: nb(sdv(bv), dd) },
+          { f: `IF(AND(ISNUMBER(D${R}),ISNUMBER(G${R})),ROUND(G${R}-D${R},${dd}),"")`, v: avg(gv) != null && avg(bv) != null ? nb(avg(bv) - avg(gv), dd) : "" },
+          pv(t.p), pv(adj.at(i)), nb(t.delta), t.p == null ? "本数不足" : pWord2(adj.at(i))], 2);
+        r++; });
+      // グラフ：調査地全体・調査地ごとの良好と不良の平均（線＝標準偏差）
+      const last = first + rows.length;
+      sG.charts = sG.charts || []; sG.charts.push({ type: "bar", horizontal: true, title: `${ml}：良好と不良の平均`, yTitle: ml, min: mn, max: mx, r: first - 2, c: 14, cols: 8, rows: Math.max(14, rows.length * 3 + 8),
+        series: [{ name: "良好", cat: `'集計_良好不良'!$A$${first + 1}:$A$${last}`, val: `'集計_良好不良'!$D$${first + 1}:$D$${last}`, err: `'集計_良好不良'!$E$${first + 1}:$E$${last}`, color: "#43A047" }, { name: "不良", cat: `'集計_良好不良'!$A$${first + 1}:$A$${last}`, val: `'集計_良好不良'!$G$${first + 1}:$G$${last}`, err: `'集計_良好不良'!$H$${first + 1}:$H$${last}`, color: "#E53935" }] });
+      r = Math.max(r, first - 2 + Math.max(14, rows.length * 3 + 8)) + 2;
+      void h0;
     }
+    // ---------- 集計：活力度の判定の内訳（調査地×生育区分） ----------
+    const sJ = bk.add("集計_判定内訳").width([16, 10, ...VCLS.map(() => 10), 9]);
+    sJ.set(0, 0, "活力度の判定の内訳（本数。関数で集計）", 4);
+    sJ.row(2, ["調査地", "生育区分", ...VCLS, "合計"], 1);
+    const jr = [["全体", "良好"], ["全体", "不良"], ...sites.flatMap((s) => [[s, "良好"], [s, "不良"]])];
+    jr.forEach(([sc, gr], i) => { const R = i + 4, site = `IF($A${R}="全体","*",$A${R})`;
+      sJ.row(i + 3, [sc, gr, ...VCLS.map((c, k) => ({ f: `COUNTIFS(${D.TR("site")},${site},${D.TR("growth")},$B${R},${D.TR("cls")},${xlStr(c)})`, v: T.filter((x) => (sc === "全体" || x.site === sc) && x.growth === gr && x.cls === c).length })), { f: `SUM(C${R}:${XW.colName(1 + VCLS.length)}${R})`, v: T.filter((x) => (sc === "全体" || x.site === sc) && x.growth === gr && x.cls).length }], 2); });
+    const jl = 3 + jr.length;
+    sJ.set(jl, 0, "グラフの項目名", 8);
+    jr.forEach(([sc, gr], i) => sJ.set(jl + 1 + i, 0, { f: `IF($A${i + 4}="全体","全体",SUBSTITUTE($A${i + 4},"防災緑地",""))&" "&$B${i + 4}`, v: `${sc === "全体" ? "全体" : siteShort(sc)} ${gr}` }, 2));
+    sJ.charts = [{ type: "pct", horizontal: true, title: "活力度の判定の内訳（割合）", yTitle: "割合", r: jl + jr.length + 3, c: 0, cols: 9, rows: Math.max(14, jr.length * 2 + 8),
+      series: VCLS.map((c, k) => ({ name: c, cat: `'集計_判定内訳'!$A$${jl + 2}:$A$${jl + 1 + jr.length}`, val: `'集計_判定内訳'!$${XW.colName(2 + k)}$4:$${XW.colName(2 + k)}$${3 + jr.length}`, color: VCOL[c] })) }];
+    // ---------- 集計：項目別の平均（調査地×生育区分） ----------
+    const sI = bk.add("集計_項目別").width([30, ...jr.map(() => 12)]);
+    sI.set(0, 0, "評価項目ごとの平均（関数で集計。値が大きいほど不良）", 4);
+    sI.row(2, ["項目", ...jr.map(([sc, gr]) => `${sc === "全体" ? "全体" : siteShort(sc)} ${gr}`)], 1); sI.heights[2] = 30;
+    SCORE_ITEMS.forEach((it, k) => { const R = k + 4; sI.row(k + 3, [it.label, ...jr.map(([sc, gr], j) => { const xs = T.filter((x) => (sc === "全体" || x.site === sc) && x.growth === gr).map((x) => x.items.at(k)).filter((v) => v != null);
+      return { f: `IFERROR(ROUND(AVERAGEIFS(${D.TR("v" + (k + 1))},${D.TR("site")},${sc === "全体" ? '"*"' : xlStr(sc)},${D.TR("growth")},${xlStr(gr)}),2),"")`, v: nb(avg(xs)) }; })], 2); });
+    sI.charts = [{ type: "bar", title: "評価項目ごとの平均", yTitle: "平均（0良好〜4不良）", min: 0, max: 4, r: SCORE_ITEMS.length + 5, c: 0, cols: Math.min(12, jr.length + 4), rows: 20,
+      series: jr.map(([sc, gr], j) => ({ nameRef: `'集計_項目別'!$${XW.colName(j + 1)}$3`, cat: `'集計_項目別'!$A$4:$A$${3 + SCORE_ITEMS.length}`, val: `'集計_項目別'!$${XW.colName(j + 1)}$4:$${XW.colName(j + 1)}$${3 + SCORE_ITEMS.length}`, color: gr === "良好" ? ["#2E7D32", "#66BB6A", "#A5D6A7", "#1B5E20"][Math.floor(j / 2) % 4] : ["#C62828", "#EF5350", "#EF9A9A", "#8E0000"][Math.floor(j / 2) % 4] })) }];
+    // ---------- 集計：樹木のタイプ別 ----------
+    const TYPES = ["常緑広葉樹", "落葉広葉樹", "針葉樹"], sT = bk.add("集計_タイプ別").width([14, 10, 10, 10, 10, 10, 10, 10]);
+    sT.set(0, 0, "樹木のタイプ別（関数で集計）", 4);
+    sT.row(2, ["タイプ", "良好 本数", "良好 活力度", "不良 本数", "不良 活力度", "良好 形状比", "不良 形状比"], 1);
+    TYPES.forEach((ty, i) => { const R = i + 4, f = (gr, m, kind) => kind === "n" ? { f: `COUNTIFS(${D.TR("type")},$A${R},${D.TR("growth")},${xlStr(gr)},${D.TR("vit")},">=0")`, v: T.filter((x) => x.type === ty && x.growth === gr && x.vit != null).length } : { f: `IFERROR(ROUND(AVERAGEIFS(${D.TR(m)},${D.TR("type")},$A${R},${D.TR("growth")},${xlStr(gr)}),2),"")`, v: nb(avg(T.filter((x) => x.type === ty && x.growth === gr).map((x) => x[m]))) };
+      sT.row(i + 3, [ty, f("良好", "vit", "n"), f("良好", "vit"), f("不良", "vit", "n"), f("不良", "vit"), f("良好", "sl"), f("不良", "sl")], 2); });
+    sT.charts = [{ type: "bar", horizontal: true, title: "タイプ別の活力度の平均", yTitle: "活力度（0良好〜4不良）", min: 0, max: 4, r: 8, c: 0, cols: 8, rows: 16,
+      series: [{ name: "良好", cat: `'集計_タイプ別'!$A$4:$A$6`, val: `'集計_タイプ別'!$C$4:$C$6`, color: "#43A047" }, { name: "不良", cat: `'集計_タイプ別'!$A$4:$A$6`, val: `'集計_タイプ別'!$E$4:$E$6`, color: "#E53935" }] }];
+    // ---------- 環境条件と樹木特性（調査区ごと） ----------
+    const EV = [["density", "植栽密度(本/ha)"], ["light", "相対光量子束密度(%)"], ["dieback", "下枝の枯れ割合(%)"], ["crown", "枝葉のある範囲(m)"], ["hMean", "平均樹高(m)"], ["lowH", "下枝高(m)"], ["litter", "リター堆積厚(cm)"], ["slope", "斜面傾斜角(°)"], ["age", "推定樹齢(年)"], ["slMean", "形状比 平均"], ["vegN", "出現種数"], ["herbC", "草本層の植被率(%)"], ["vitMean", "活力度 平均"]];
+    const sE = bk.add("環境と樹木特性").width([22, ...EV.map(() => 11)]);
+    sE.set(0, 0, "環境条件と樹木特性の相関（調査区ごと）", 4);
+    sE.set(1, 0, "上の表＝相関係数（CORREL関数・ピアソン。データを直すと変わる）。下の表＝順位相関係数ρ（スピアマン・出力時の値）。|値|が0.7以上は強い関係の目安。", 8); sE.heights[1] = 30;
+    sE.row(3, ["", ...EV.map((e) => e[1])], 1); sE.heights[3] = 40;
+    EV.forEach(([a, al], i) => { sE.set(4 + i, 0, al, 6); EV.forEach(([b], j) => sE.set(4 + i, 1 + j, i === j ? "" : { f: `IFERROR(ROUND(CORREL(${D.ZR(a)},${D.ZR(b)}),2),"")`, v: (() => { const pr = A.gk.filter((x) => x[a] != null && x[b] != null); if (pr.length < 3) return ""; const ma = avg(pr.map((x) => x[a])), mb = avg(pr.map((x) => x[b])); let sab = 0, saa = 0, sbb = 0; pr.forEach((x) => { sab += (x[a] - ma) * (x[b] - mb); saa += (x[a] - ma) ** 2; sbb += (x[b] - mb) ** 2; }); return saa && sbb ? nb(sab / Math.sqrt(saa * sbb)) : ""; })() }, 7)); });
+    const r2 = 5 + EV.length;
+    sE.row(r2, ["順位相関ρ（出力時）", ...EV.map((e) => e[1])], 1); sE.heights[r2] = 40;
+    EV.forEach(([a, al], i) => { sE.set(r2 + 1 + i, 0, al, 6); EV.forEach(([b], j) => sE.set(r2 + 1 + i, 1 + j, i === j ? "" : nb(spearman(A.gk.map((x) => x[a]), A.gk.map((x) => x[b]))), 7)); });
+    // 散布図（調査区データを直接参照。良好と不良は調査区データの中で上下に分けて並べてあるので、系列を分けられる）
+    const nG = D.zones.filter((g) => zGrowth(g.z) === "良好").length, nZ = D.zones.length, rg = (k, a, b) => `'${ZD_NAME}'!$${D.ZL[k]}$${a}:$${D.ZL[k]}$${b}`;
+    const pairs = [["density", "vitMean"], ["light", "vitMean"], ["dieback", "vitMean"], ["density", "dieback"], ["density", "light"], ["light", "dieback"], ["slMean", "vitMean"], ["density", "slMean"], ["light", "herbC"], ["light", "vegN"]];
+    const lab = Object.fromEntries(EV);
+    sE.charts = pairs.map(([xk, yk], i) => ({ type: "scatter", title: `${lab[xk].replace(/\(.*\)/, "")}と${lab[yk].replace(/\(.*\)/, "")}`, xTitle: lab[xk], yTitle: lab[yk], min: yk === "vitMean" ? 0 : null, max: yk === "vitMean" ? 4 : null, r: r2 + EV.length + 3 + Math.floor(i / 2) * 20, c: (i % 2) * 7, cols: 7, rows: 19,
+      series: [nG ? { name: "良好区", x: rg(xk, 2, 1 + nG), y: rg(yk, 2, 1 + nG), color: "#43A047", trend: true } : null, nZ > nG ? { name: "不良区", x: rg(xk, 2 + nG, 1 + nZ), y: rg(yk, 2 + nG, 1 + nZ), color: "#E53935", trend: true } : null].filter(Boolean) }));
+    // ---------- 木の大きさ・形状比と活力度（1本ずつ） ----------
+    const sZ = bk.add("大きさと活力度").width([18, 9, 14, 14, 14, 14]);
+    sZ.set(0, 0, "木の大きさ・形状比と活力度（1本ずつ）", 4);
+    sZ.row(2, ["樹種", "本数", "樹高と活力度 相関（関数）", "幹周と活力度 相関（関数）", "形状比と活力度 相関（関数）", "形状比と活力度 ρ（出力時）"], 1); sZ.heights[2] = 40;
+    const spL = ["全樹種", ...[...new Set(T.map((x) => x.t.sp).filter(Boolean))].filter((sp) => T.filter((x) => x.t.sp === sp && x.vit != null).length >= 5)];
+    spL.forEach((sp, i) => { const R = i + 4, xs = T.filter((x) => (sp === "全樹種" || x.t.sp === sp) && x.vit != null), cor = (m) => `IFERROR(ROUND(CORREL(IF(((${D.TR("sp")}=$A${R})+($A${R}="全樹種")>0)*ISNUMBER(${D.TR(m)})*ISNUMBER(${D.TR("vit")}),${D.TR(m)}),IF(((${D.TR("sp")}=$A${R})+($A${R}="全樹種")>0)*ISNUMBER(${D.TR(m)})*ISNUMBER(${D.TR("vit")}),${D.TR("vit")})),2),"")`;
+      const pear = (m) => { const pr = xs.filter((x) => x[m] != null); if (pr.length < 3) return ""; const ma = avg(pr.map((x) => x[m])), mb = avg(pr.map((x) => x.vit)); let s1 = 0, s2 = 0, s3 = 0; pr.forEach((x) => { s1 += (x[m] - ma) * (x.vit - mb); s2 += (x[m] - ma) ** 2; s3 += (x.vit - mb) ** 2; }); return s2 && s3 ? nb(s1 / Math.sqrt(s2 * s3)) : ""; };
+      sZ.row(i + 3, [sp, xs.length, { f: cor("h"), a: true, v: pear("h") }, { f: cor("g"), a: true, v: pear("g") }, { f: cor("sl"), a: true, v: pear("sl") }, nb(spearman(xs.map((x) => x.sl), xs.map((x) => x.vit)))], 2); });
+    sZ.charts = [["sl", "形状比"], ["g", "幹周(cm)"], ["h", "樹高(m)"]].map(([m, ml], i) => ({ type: "scatter", title: `${ml.replace(/\(.*\)/, "")}と活力度（1本ずつ）`, xTitle: ml, yTitle: "活力度（0良好〜4不良）", min: 0, max: 4, r: spL.length + 6 + i * 20, c: 0, cols: 8, rows: 19,
+      series: [{ name: "全木", x: D.TR(m), y: D.TR("vit"), color: "#1565C0", trend: true }] }));
+    // ---------- 場所による偏り（出力時の値） ----------
+    const S4 = analyze(site, A.year, false);
+    const sP = bk.add("場所による偏り").width([14, 8, 16, 12, 9, 26, 16, 16, 16]);
+    sP.set(0, 0, "場所による偏り（出力時の値）", 4);
+    tblRows(sP, 2, ["調査地", "本数", "外周からの距離と活力度 ρ", "モランのI", "p値", "判定", "外周から5m未満 平均", "5〜15m 平均", "15m以上 平均"], S4.spatial.map((x) => [siteShort(x.site), x.n, nb(x.rhoEdge), x.moran ? nb(x.moran.I) : "", x.moran ? pv(x.moran.p) : "", x.moran ? (x.moran.p < 0.05 && x.moran.I > 0 ? "似た状態の木が集まっている" : "はっきりした集まりはない") : "本数不足", ...x.bands.map((b) => b.n ? `${nb(b.m)}（${b.n}本）` : "")]));
+    // ---------- 植生（出力時の値） ----------
+    const P = A.plots;
+    const sV = bk.add("植生_種数と優占種").width([16, 16, 10, ...VEG.layers.map(() => 18)]);
+    tblRows(sV, 0, ["調査区", "樹林・生育", "出現種数", ...VEG.layers.map(([, n]) => n + " 優占種")], P.map((p) => [p.no, `${p.ans.forest || ""}・${p.ans.growth || ""}`, new Set((p.sp || []).map((x) => x.n)).size, ...VEG.layers.map(([l]) => ((p.layers || {})[l] || {}).d || "")]));
+    const sV2 = bk.add("植生_良好不良の比較").width([18, 24, 10, 10, 8, 10, 10, 40, 40]);
+    tblRows(sV2, 0, ["比較", "調査区（良好／不良）", "種数 良好", "種数 不良", "共通種", "Sørensen", "Jaccard", "良好区だけの種", "不良区だけの種"], A.pairs.map((p) => [p.label, `${p.good}／${p.bad}`, p.nG, p.nB, p.common.length, nb(p.sor), nb(p.jac), p.onlyG.join("・"), p.onlyB.join("・")]));
+    const sV3 = bk.add("植生_類似度").width([16, ...P.map(() => 10)]);
+    sV3.set(0, 0, "Sørensen", 4); let rv = tblRows(sV3, 1, ["調査区", ...P.map((p) => p.no)], P.map((p, i) => [p.no, ...P.map((_, j) => nb(A.sor.at(i).at(j)))]));
+    sV3.set(rv, 0, "Jaccard", 4); tblRows(sV3, rv + 1, ["調査区", ...P.map((p) => p.no)], P.map((p, i) => [p.no, ...P.map((_, j) => nb(A.jac.at(i).at(j)))]));
+    const ra = A.ra, sV4 = bk.add("植生_組成表（並べ替え）").width([10, 22, ...ra.plotOrder.map(() => 9)]);
+    sV4.row(0, ["階層", "種名", ...ra.plotOrder.map((i) => P.at(i).no)], 1); sV4.freeze = [1, 2];
+    ra.keyOrder.forEach((j, k) => { const key = ra.keys.at(j); sV4.row(k + 1, [LAYER_JP[key.l], key.n], 2); ra.plotOrder.forEach((i, c) => { const s = (P.at(i).sp || []).find((x) => x.l + "|" + x.n === key.k); sV4.set(k + 1, c + 2, s ? bb(s) : "", s ? 7 : 2); }); });
+    // ---------- 経年変化 ----------
+    const TRd = AN_DS ? { ok: false } : trend(site), sY = bk.add("経年変化").width([24, 8, 11, 11, 9, 16, 12, 12, 9, 26]);
+    if (!TRd.ok) sY.set(0, 0, AN_DS ? "読み込んだExcelで分析しているため、経年変化はアプリの記録で出力してください。" : "比べられる前の年度の記録がありません。", 0);
+    else {
+      let ry = 0; sY.set(ry++, 0, `前年度との比較（${fyLabel(TRd.prevY)} → ${fyLabel(S.year)}、同じ木どうし。出力時の値）`, 4); ry++;
+      ry = tblRows(sY, ry, ["区分", "本数", `活力度 ${fyShort(TRd.prevY)}`, `活力度 ${fyShort(S.year)}`, "変化", "良化／同じ／悪化（本）", "樹高の伸び(m)", "幹周の伸び(cm)", "p値", "判定"], [TRd.overall, ...TRd.byType, ...TRd.byZone].map((x) => [x.label, x.n, nb(x.v0), nb(x.v1), nb(x.dv), `${x.better}／${x.same}／${x.worse}`, nb(x.dh), nb(x.dg, 1), x.test.p == null ? "本数不足" : pv(x.test.p), x.test.p == null ? "" : pWord2(x.test.p)]));
+      const t0 = ry; sY.row(ry, ["調査区", ...TRd.years.map(fyShort)], 1); TRd.series.forEach((x, i) => sY.row(ry + 1 + i, [x.label, ...x.vals.map((v) => nb(v))], 2)); ry += TRd.series.length + 2;
+      sY.charts = [{ type: "line", title: "活力度の平均の推移（調査区ごと）", yTitle: "活力度（0良好〜4不良）", min: 0, max: 4, r: ry, c: 0, cols: 9, rows: 20,
+        series: TRd.series.map((x, i) => ({ name: x.label, cat: `'経年変化'!$B$${t0 + 1}:$${XW.colName(TRd.years.length)}$${t0 + 1}`, val: `'経年変化'!$B$${t0 + 2 + i}:$${XW.colName(TRd.years.length)}$${t0 + 2 + i}`, color: ["#2E7D32", "#C62828", "#1565C0", "#EF6C00", "#6A1B9A", "#00838F", "#827717", "#AD1457", "#4E342E", "#37474F"][i % 10] })) }];
+    }
+    if (AN_DS) editLogSheet(bk);
     return bk.blob();
   }
+  function tblRows(sh, r0, head, rows) { sh.row(r0, head, 1); rows.forEach((row, i) => sh.row(r0 + 1 + i, row.map((v) => v ?? ""), 2)); return r0 + rows.length + 2; }
+  // 読み込んだExcelとアプリの記録の違い（PCで直した箇所）
+  function editLogSheet(bk) {
+    const sh = bk.add("編集の記録").width([22, 16, 12, 18, 14, 14, 30]);
+    sh.set(0, 0, `PCで直した箇所（読み込んだExcel「${AN_DS.file}」とアプリの記録の違い）`, 4);
+    sh.set(1, 0, `読み込み：${new Date(AN_DS.at).toLocaleString("ja-JP")}　違い：${AN_DS.diffs.length}件`, 0);
+    tblRows(sh, 3, ["内部ID", "調査地", "樹木番号など", "項目", "アプリの記録", "読み込んだ値", "メモ"], AN_DS.diffs.map((d) => [d.id, d.site, d.what, d.field, d.app ?? "", d.file ?? "", d.memo || ""]));
+  }
+
 
   // =====================================================================
   // 自由分析（BIのように、横軸・縦軸・色分け・絞り込みを自由に選んでグラフと表を作る）
@@ -2735,6 +2877,73 @@ window.Store = (function () {
         <div class="antbl"><table><thead><tr><th>調査地</th><th>No.</th><th>樹種</th><th>区分</th><th>活力度</th><th>判定</th><th>樹高</th><th>幹周</th><th>形状比</th></tr></thead><tbody>${list.map((x) => `<tr data-bi-tree="${esc(x.t.key)}" style="cursor:pointer"><td>${esc(siteShort(x.site))}</td><td>${esc(x.t.tno)}</td><td>${esc(x.t.sp)}</td><td>${esc(`${forestShort(x.forest)}・${x.growth}`)}</td><td>${f2(x.vit, 1)}</td><td>${esc(x.cls || "")}</td><td>${f2(x.h, 1)}</td><td>${f2(x.g, 1)}</td><td>${f2(x.sl, 1)}</td></tr>`).join("")}</tbody></table></div>
         <p class="small muted">行をタップすると、その木の調査画面を開きます。</p></details>`;
   }
+  // ---------- 自由分析のExcel（データのシート＋関数＋Excelのグラフ） ----------
+  const BI_TD = { site: "site", growth: "growth", forest: "forest", zone: "zone", type: "type", sp: "sp", cls: "cls", slc: "slc", landform: "e_landform", erosion: "e_erosion", deadState: "e_deadState" };
+  const BI_TDY = { vit: "vit", h: "h", g: "g", w: "w", sl: "sl", ...Object.fromEntries(SCORE_ITEMS.map((_, i) => ["v" + (i + 1), "v" + (i + 1)])), e_density: "e_density", e_light: "e_light", e_dieback: "e_dieback", e_lowH: "e_lowH", e_litter: "e_litter", e_slope: "e_slope", e_age: "e_age" };
+  const BI_ZDY = { e_density: "density", e_light: "light", e_dieback: "dieback", e_crown: "crown", e_lowH: "lowH", e_litter: "litter", e_slope: "slope", e_age: "age", e_vegN: "vegN", e_herbC: "herbC", e_shrubC: "shrubC" };
+  async function buildBIExcel(B, rowsAll, A) {
+    const bk = XW.book(), now = new Date(), nb = (v, d = 2) => v == null || !isFinite(v) ? "" : Math.round(v * 10 ** d) / 10 ** d;
+    const XF = BF(B.x), YF = BF(B.y), CF = BF(B.color), isCat = XF.cat;
+    const n0 = bk.add("はじめに").width([110]); n0.landscape = false;
+    const fdesc = Object.entries(B.f).filter(([, v]) => v).map(([k, v]) => `${BF(k).label}＝${k === "site" ? siteShort(v) : v}`).join("、") || "なし";
+    [[`${CFG.appTitle} 自由分析（${fyLabel(S.year)}）`, 4], [`作成：${now.toLocaleString("ja-JP")}　作成者：${S.name}　データの出どころ：${AN_DS ? `読み込んだExcel「${AN_DS.file}」` : "アプリの記録"}`, 0],
+      [`横軸：${XF.label}　縦軸：${YF.label}　色分け：${B.color === "all" ? "なし" : CF.label}　単位：${B.unit === "zone" ? "調査区ごと" : "1本ずつ"}　絞り込み：${fdesc}`, 0], ["", 0],
+      ["・「自由分析」シートの表は関数で「樹木データ」「調査区データ」を参照し、グラフはその表を参照しています。元データを直すと、表とグラフが変わります。", 0],
+      ["・絞り込みの条件は表の関数に入っています（条件の値は「自由分析」シートの上のほうのセル）。直したファイルはアプリの「分析 → Excelから読み込む」で読み込めます。", 0]].forEach(([t, st], i) => n0.set(i, 0, t, st));
+    const D = addDataSheets(bk, A), sh = bk.add("自由分析").width([18, 16, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11]), SN = "'自由分析'";
+    // 絞り込み条件（セルに置き、関数から参照する）
+    sh.set(0, 0, "絞り込みの条件（空欄＝すべて）", 6);
+    const fkeys = Object.keys(BI_TD).filter((k) => k !== "zone"), fRow = {};
+    fkeys.forEach((k, i) => { sh.set(1 + i, 0, BF(k).label, 6); sh.set(1 + i, 1, B.f[k] || "", 5); fRow[k] = 2 + i; });
+    const crit = (extra = []) => [...fkeys.map((k) => `${D.TR(BI_TD[k])},IF($B$${fRow[k]}="","*",$B$${fRow[k]})`), ...extra].join(",");
+    const filtered = biFilter(rowsAll, B);
+    let r = fkeys.length + 3;
+    if (isCat) {
+      const C = biCat(B.unit === "zone" ? biZoneRows(filtered) : filtered, B), xcol = BI_TD[XF.k], ccol = BI_TD[CF.k], ycol = BI_TDY[YF.k];
+      const mode = B.chart === "stack" ? "stack" : B.chart === "count" ? "count" : B.chart === "box" ? "box" : "bar";
+      sh.set(r++, 0, `${XF.label}ごとの${mode === "stack" ? "活力度の判定の内訳" : mode === "count" ? "本数" : YF.label}${B.color !== "all" ? `（${CF.label}で色分け）` : ""}`, 4);
+      const cv = C.cv, head = mode === "stack" ? [XF.label, "（条件の値）", ...VCLS] : [XF.label, "（条件の値）", ...cv.flatMap((c) => mode === "count" ? [`${c} 本数`] : mode === "box" ? [`${c} 最小`, `${c} 25%`, `${c} 中央値`, `${c} 75%`, `${c} 最大`] : [`${c} 本数`, `${c} 平均`, `${c} 標準偏差`])];
+      sh.row(r, head, 1); sh.heights[r] = 32; const h0 = r; r++;
+      const useF = B.unit === "tree" && (XF.k === "all" || xcol) && (B.color === "all" || ccol) && (mode === "count" || mode === "stack" || ycol);
+      C.out.forEach((o, i) => { const R = r + 1, xv = XF.k === "site" ? o.rx.at(0).site : o.r;
+        const cells = [o.r, XF.k === "all" ? "" : xv];
+        const cx = XF.k === "all" ? [] : [`${D.TR(xcol)},$B${R}`];
+        if (mode === "stack") VCLS.forEach((cl) => cells.push(useF ? { f: `COUNTIFS(${crit([...cx, `${D.TR("cls")},${xlStr(cl)}`])})`, v: o.cells.reduce((p, c) => p + c.counts[cl], 0) } : o.cells.reduce((p, c) => p + c.counts[cl], 0)));
+        else cv.forEach((c, j) => { const cc = o.cells.at(j), cvv = B.color === "site" ? (cc.vals.length ? rowsAll.find((x) => siteShort(x.site) === c)?.site : c) : c, ce = B.color === "all" ? [] : [`${D.TR(ccol)},${xlStr(cvv || c)}`], cr = crit([...cx, ...ce]);
+          const arr = [...fkeys.map((k) => `(($B$${fRow[k]}="")+(${D.TR(BI_TD[k])}=$B$${fRow[k]})>0)`), ...(XF.k === "all" ? [] : [`(${D.TR(xcol)}=$B${R})`]), ...(B.color === "all" ? [] : [`(${D.TR(ccol)}=${xlStr(cvv || c)})`]), `ISNUMBER(${D.TR(ycol || "vit")})`].join("*");
+          if (mode === "count") cells.push(useF ? { f: `COUNTIFS(${cr})`, v: cc.cnt } : cc.cnt);
+          else if (mode === "box") ["MIN", 0.25, 0.5, 0.75, "MAX"].forEach((qq) => { const v = qq === "MIN" ? cc.min : qq === "MAX" ? cc.max : q(cc.vals, qq); cells.push(useF ? { f: qq === "MIN" || qq === "MAX" ? `IFERROR(${qq}(IF(${arr},${D.TR(ycol)})),"")` : `IFERROR(_xlfn.QUARTILE.INC(IF(${arr},${D.TR(ycol)}),${qq * 4}),"")`, a: true, v: nb(v) } : nb(v)); });
+          else { cells.push(useF ? { f: `COUNTIFS(${cr},${D.TR(ycol)},">=0")`, v: cc.n } : cc.n); cells.push(useF ? { f: `IFERROR(ROUND(AVERAGEIFS(${D.TR(ycol)},${cr}),2),"")`, v: nb(cc.m) } : nb(cc.m)); cells.push(useF ? { f: `IFERROR(ROUND(_xlfn.STDEV.S(IF(${arr},${D.TR(ycol)})),2),"")`, a: true, v: nb(cc.sd) } : nb(cc.sd)); } });
+        sh.row(r, cells, 2); r++; });
+      const f1 = h0 + 2, f2_ = h0 + 1 + C.out.length, L = XW.colName, cat = `${SN}!$A$${f1}:$A$${f2_}`;
+      let series;
+      if (mode === "stack") series = VCLS.map((cl, k) => ({ name: cl, cat, val: `${SN}!$${L(2 + k)}$${f1}:$${L(2 + k)}$${f2_}`, color: VCOL[cl] }));
+      else if (mode === "count") series = cv.map((c, j) => ({ name: c, cat, val: `${SN}!$${L(2 + j)}$${f1}:$${L(2 + j)}$${f2_}`, color: biColor(c, j) }));
+      else if (mode === "box") series = cv.map((c, j) => ({ name: `${c}（中央値）`, cat, val: `${SN}!$${L(2 + j * 5 + 2)}$${f1}:$${L(2 + j * 5 + 2)}$${f2_}`, color: biColor(c, j) }));
+      else series = cv.map((c, j) => ({ name: c, cat, val: `${SN}!$${L(2 + j * 3 + 1)}$${f1}:$${L(2 + j * 3 + 1)}$${f2_}`, err: `${SN}!$${L(2 + j * 3 + 2)}$${f1}:$${L(2 + j * 3 + 2)}$${f2_}`, color: biColor(c, j) }));
+      sh.charts = [{ type: mode === "stack" ? "pct" : "bar", horizontal: true, title: mode === "stack" ? "活力度の判定の内訳" : mode === "count" ? "本数" : mode === "box" ? `${YF.label}（中央値）` : YF.label, yTitle: mode === "count" ? "本数" : mode === "stack" ? "割合" : YF.label, min: YF.fix4 && mode !== "count" && mode !== "stack" ? 0 : null, max: YF.fix4 && mode !== "count" && mode !== "stack" ? 4 : null, r: r + 1, c: 0, cols: 9, rows: Math.max(16, C.out.length * 2 + 10), series }];
+      if (!useF) sh.set(r, 0, "※この組み合わせは関数で表せない項目を含むため、表の値は出力時の値です（グラフは表を参照しています）。", 8);
+    } else {
+      // 散布図：点ごとに元データのセルを参照（色分けのグループごとにまとめて並べる）
+      const E = biNum(B.unit === "zone" ? biZoneRows(filtered) : filtered, B), groups = [...new Set(E.pts.map((p) => p.c))];
+      const tRow = new Map(D.trees.map((x, i) => [x.site + "|" + x.t.tno, i + 2])), zRow = new Map(D.zones.map((g, i) => [g.site + "|" + g.z, i + 2]));
+      const refOf = (F, x) => { if (B.unit === "zone") { const zr = zRow.get(x.zoneKey || x.site + "|" + x.z); const zk = BI_ZDY[F.k] || (F.k === "vit" ? "vitMean" : F.k === "sl" ? "slMean" : F.k === "h" ? "hMean" : null);
+          if (zk && zr) return { f: `'${ZD_NAME}'!${D.ZL[zk]}${zr}`, v: nb(fget(F, "zone")(x)) }; const tc = BI_TDY[F.k]; return tc && zr ? { f: `IFERROR(AVERAGEIFS(${D.TR(tc)},${D.TR("zkey")},'${ZD_NAME}'!$${D.ZL.zkey}$${zr}),"")`, v: nb(fget(F, "zone")(x)) } : nb(fget(F, "zone")(x)); }
+        const tr = tRow.get(x.site + "|" + x.t.tno), tc = BI_TDY[F.k]; return tc && tr ? { f: `'${TD_NAME}'!${D.TL[tc]}${tr}`, v: nb(F.get(x)) } : nb(F.get(x)); };
+      sh.set(r++, 0, `${XF.label} と ${YF.label}（${B.unit === "zone" ? "調査区ごと" : "1本ずつ"}）`, 4);
+      sh.row(r, [B.color === "all" ? "グループ" : CF.label, B.unit === "zone" ? "調査区" : "樹木", XF.label, YF.label], 1); sh.heights[r] = 32; r++;
+      const rowsXY = (B.unit === "zone" ? biZoneRows(filtered) : filtered).filter((x) => { const a = fget(XF, B.unit)(x), b = fget(YF, B.unit)(x); return a != null && b != null && isFinite(a) && isFinite(b); });
+      const gOf = (x) => B.color === "all" ? "全体" : CF.get(x), start = {}, end = {};
+      groups.forEach((g) => { start[g] = r + 1; rowsXY.filter((x) => gOf(x) === g).forEach((x) => { sh.row(r, [g, B.unit === "zone" ? `${siteShort(x.site)} ${zLabel(x.z)}` : `${siteShort(x.site)} ${x.t.tno}_${x.t.sp}`, refOf(XF, x), refOf(YF, x)], 2); r++; }); end[g] = r; });
+      const first = Math.min(...Object.values(start)), last = r;
+      r++; sh.set(r, 0, "相関係数（関数・ピアソン）", 6); sh.set(r, 2, { f: `IFERROR(ROUND(CORREL($C$${first}:$C$${last},$D$${first}:$D$${last}),2),"")`, v: "" }, 7);
+      sh.set(r + 1, 0, "順位相関係数ρ（出力時）", 6); sh.set(r + 1, 2, nb(E.rho), 7); r += 3;
+      sh.charts = [{ type: "scatter", title: `${XF.label.replace(/（.*）$/, "")}と${YF.label.replace(/（.*）$/, "")}`, xTitle: XF.label, yTitle: YF.label, min: YF.fix4 ? 0 : null, max: YF.fix4 ? 4 : null, r: 0, c: 6, cols: 8, rows: 22,
+        series: groups.filter((g) => end[g] >= start[g]).map((g, j) => ({ name: g, x: `${SN}!$C$${start[g]}:$C$${end[g]}`, y: `${SN}!$D$${start[g]}:$D$${end[g]}`, color: biColor(g, j), trend: B.chart === "line" })) }];
+    }
+    if (AN_DS) editLogSheet(bk);
+    return bk.blob();
+  }
   function biMount(host, ctx) {
     const B = S.bi = S.bi && S.bi.f ? S.bi : biDefaults();
     const A = ctx.A || (ctx.A = analyze("", S.year, true)), env = new Map(A.gk.map((g) => [g.site + "|" + g.z, g]));
@@ -2754,16 +2963,7 @@ window.Store = (function () {
       const svg = ($(".bi-out", host).innerHTML || "").trim(); if (!svg.startsWith("<svg")) { toast("グラフがありません"); return; }
       const name = `自由分析_${fyShort(S.year)}_${stamp()}`;
       if (act.dataset.biAct === "png") { const p = await svgToPng(svg); if (p) await saveBlob(new Blob([p.buf], { type: "image/png" }), name + ".png"); return; }
-      const blob = await busy("Excelを作成しています…", async () => { const bk = XW.book(), sh = bk.add("自由分析").width([22, 12, 12, 12, 12, 12, 12, 12, 12, 12]);
-        sh.set(0, 0, `${CFG.appTitle} 自由分析（${fyLabel(S.year)}）`, 4);
-        sh.set(1, 0, `横軸：${BF(B.x).label}　縦軸：${BF(B.y).label}　色分け：${B.color === "all" ? "なし" : BF(B.color).label}　単位：${B.unit === "zone" ? "調査区ごと" : "1本ずつ"}　絞り込み：${Object.entries(B.f).filter(([, v]) => v).map(([k, v]) => `${BF(k).label}=${k === "site" ? siteShort(v) : v}`).join("、") || "なし"}`, 0);
-        const p = await svgToPng(svg); if (p) (sh.images = []).push({ buf: p.buf, w: p.w, h: p.h, r: 3, c: 0 });
-        const t = $(".antbl table", host), r0 = 4 + (p ? Math.ceil(p.h / 20) + 1 : 0);
-        if (t) [...t.rows].forEach((tr2, i) => [...tr2.cells].forEach((td, j) => { const v = td.textContent; sh.set(r0 + i, j, /^-?\d+(\.\d+)?$/.test(v) ? +v : v, i === 0 ? 1 : 2); }));
-        const tl = bk.add("対象の木").width([16, 8, 14, 12, 9, 12, 9, 9, 9]);
-        tl.row(0, ["調査地", "樹木番号", "樹種", "区分", "活力度", "判定", "樹高(m)", "幹周(cm)", "形状比"], 1);
-        biFilter(rows, B).forEach((x, i) => tl.row(i + 1, [x.site, x.t.tno, x.t.sp, `${forestShort(x.forest)}・${x.growth}`, x.vit ?? "", x.cls || "", x.h ?? "", x.g ?? "", x.sl ?? ""], 2));
-        return bk.blob(); });
+      const blob = await busy("Excelを作成しています…", () => buildBIExcel(B, rows, A));
       if (blob) await saveBlob(blob, name + ".xlsx");
     };
     render();
@@ -2813,7 +3013,8 @@ window.Store = (function () {
         const cs = [...sh.cells.get(r).entries()].sort((a, b) => a[0] - b[0]).map(([c, { v, s }]) => {
           const at = `r="${ref(r, c)}"${s || sOff ? ` s="${s + sOff}"` : ""}`;
           if (v == null || v === "") return `<c ${at}/>`;
-          if (typeof v === "object" && v.f) return `<c ${at}><f>${xe(v.f)}</f></c>`;
+          if (typeof v === "object" && v.f) { const cv = v.v; const fx = v.a ? `<f t="array" ref="${ref(r, c)}">${xe(v.f)}</f>` : `<f>${xe(v.f)}</f>`;
+            if (cv == null || cv === "") return `<c ${at} t="str">${fx}<v></v></c>`; if (typeof cv === "number" && isFinite(cv)) return `<c ${at}>${fx}<v>${cv}</v></c>`; return `<c ${at} t="str">${fx}<v>${xe(cv)}</v></c>`; }
           if (typeof v === "number" && isFinite(v)) return `<c ${at}><v>${v}</v></c>`;
           return `<c ${at} t="inlineStr"><is><t xml:space="preserve">${xe(v)}</t></is></c>`;
         }).join("");
@@ -2822,9 +3023,33 @@ window.Store = (function () {
       let pane = "";
       if (sh.freeze) { const [fr, fc] = sh.freeze; pane = `<pane${fc ? ` xSplit="${fc}"` : ""}${fr ? ` ySplit="${fr}"` : ""} topLeftCell="${ref(fr, fc)}" activePane="${fr && fc ? "bottomRight" : fr ? "bottomLeft" : "topRight"}" state="frozen"/>`; }
       return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${ref(sh.maxR, sh.maxC)}"/><sheetViews><sheetView workbookViewId="0"${first ? ' tabSelected="1"' : ""}>${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="16.5"/>${sh.cols.length ? `<cols>${sh.cols.map((w, k) => `<col min="${k + 1}" max="${k + 1}" width="${w}" customWidth="1"/>`).join("")}</cols>` : ""}<sheetData>${rows}</sheetData>${sh.merges.length ? `<mergeCells count="${sh.merges.length}">${sh.merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : ""}${sh.dv.length ? `<dataValidations count="${sh.dv.length}">${sh.dv.map((d) => `<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${d.sq}"><formula1>${xe(d.f)}</formula1></dataValidation>`).join("")}</dataValidations>` : ""}<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="${sh.landscape ? "landscape" : "portrait"}" fitToWidth="1" fitToHeight="0"/>${sh.images && sh.images.length ? '<drawing r:id="rIdImg"/>' : ""}</worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${ref(sh.maxR, sh.maxC)}"/><sheetViews><sheetView workbookViewId="0"${first ? ' tabSelected="1"' : ""}>${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="16.5"/>${sh.cols.length ? `<cols>${sh.cols.map((w, k) => `<col min="${k + 1}" max="${k + 1}" width="${w}" customWidth="1"/>`).join("")}</cols>` : ""}<sheetData>${rows}</sheetData>${sh.merges.length ? `<mergeCells count="${sh.merges.length}">${sh.merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : ""}${sh.dv.length ? `<dataValidations count="${sh.dv.length}">${sh.dv.map((d) => `<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${d.sq}"><formula1>${xe(d.f)}</formula1></dataValidation>`).join("")}</dataValidations>` : ""}<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="${sh.landscape ? "landscape" : "portrait"}" fitToWidth="1" fitToHeight="0"/>${(sh.images && sh.images.length) || (sh.charts && sh.charts.length) ? '<drawing r:id="rIdImg"/>' : ""}</worksheet>`;
     }
     const safeName = (n, used) => { let b = String(n).replace(/[\[\]:*?\/\\]/g, "_").slice(0, 31) || "Sheet", s = b, k = 2; while (used.has(s)) s = b.slice(0, 28) + "_" + k++; used.add(s); return s; };
+    // Excelのグラフ（棒・積み上げ・散布図・折れ線）。データはシートのセル範囲を参照するので、値を直すとグラフも変わる
+    //   ch = { type: "bar"|"stack"|"pct"|"scatter"|"line", horizontal, title, xTitle, yTitle, min, max, series: [{ name, cat, val, x, y, err, color, trend }] }
+    function chartXml(ch) {
+      const NSC = 'xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+      const rich = (t, sz = 1200, b = 1) => `<c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="${sz}" b="${b}"/></a:pPr><a:r><a:rPr lang="ja-JP" sz="${sz}" b="${b}"/><a:t>${xe(t)}</a:t></a:r></a:p></c:rich></c:tx>`;
+      const title = (t, sz) => t ? `<c:title>${rich(t, sz)}<c:overlay val="0"/></c:title>` : "";
+      const fill = (col) => col ? `<c:spPr><a:solidFill><a:srgbClr val="${col.replace("#", "").toUpperCase()}"/></a:solidFill></c:spPr>` : "";
+      const tx = (sr) => sr.nameRef ? `<c:tx><c:strRef><c:f>${xe(sr.nameRef)}</c:f></c:strRef></c:tx>` : `<c:tx><c:v>${xe(sr.name || "")}</c:v></c:tx>`;
+      const scal = (mn, mx, rev) => `<c:scaling><c:orientation val="${rev ? "maxMin" : "minMax"}"/>${mx != null ? `<c:max val="${mx}"/>` : ""}${mn != null ? `<c:min val="${mn}"/>` : ""}</c:scaling>`;
+      const valAx = (id, cross, pos, t, mn, mx, grid = true) => `<c:valAx><c:axId val="${id}"/>${scal(mn, mx)}<c:delete val="0"/><c:axPos val="${pos}"/>${grid ? "<c:majorGridlines/>" : ""}${t ? `<c:title>${rich(t, 1000, 0)}<c:overlay val="0"/></c:title>` : ""}<c:numFmt formatCode="General" sourceLinked="0"/><c:tickLblPos val="nextTo"/><c:crossAx val="${cross}"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx>`;
+      let plot = "";
+      if (ch.type === "scatter") {
+        const sers = ch.series.map((sr, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>${tx(sr)}<c:spPr><a:ln w="19050"><a:noFill/></a:ln></c:spPr><c:marker><c:symbol val="circle"/><c:size val="7"/>${fill(sr.color)}</c:marker>${sr.trend ? `<c:trendline><c:spPr><a:ln w="15875"><a:solidFill><a:srgbClr val="${(sr.color || "#555").replace("#", "").toUpperCase()}"/></a:solidFill><a:prstDash val="dash"/></a:ln></c:spPr><c:trendlineType val="linear"/><c:dispRSqr val="0"/><c:dispEq val="0"/></c:trendline>` : ""}<c:xVal><c:numRef><c:f>${xe(sr.x)}</c:f></c:numRef></c:xVal><c:yVal><c:numRef><c:f>${xe(sr.y)}</c:f></c:numRef></c:yVal><c:smooth val="0"/></c:ser>`).join("");
+        plot = `<c:scatterChart><c:scatterStyle val="lineMarker"/><c:varyColors val="0"/>${sers}<c:axId val="11"/><c:axId val="12"/></c:scatterChart>${valAx(11, 12, "b", ch.xTitle, ch.xmin, ch.xmax, false)}${valAx(12, 11, "l", ch.yTitle, ch.min, ch.max)}`;
+      } else if (ch.type === "line") {
+        const sers = ch.series.map((sr, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>${tx(sr)}<c:spPr><a:ln w="22225"><a:solidFill><a:srgbClr val="${(sr.color || "#1565C0").replace("#", "").toUpperCase()}"/></a:solidFill></a:ln></c:spPr><c:marker><c:symbol val="circle"/><c:size val="6"/>${fill(sr.color)}</c:marker><c:cat><c:strRef><c:f>${xe(sr.cat)}</c:f></c:strRef></c:cat><c:val><c:numRef><c:f>${xe(sr.val)}</c:f></c:numRef></c:val><c:smooth val="0"/></c:ser>`).join("");
+        plot = `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${sers}<c:marker val="1"/><c:axId val="21"/><c:axId val="22"/></c:lineChart><c:catAx><c:axId val="21"/>${scal()}<c:delete val="0"/><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="0"/><c:tickLblPos val="nextTo"/><c:crossAx val="22"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/></c:catAx>${valAx(22, 21, "l", ch.yTitle, ch.min, ch.max)}`;
+      } else {
+        const grouping = ch.type === "stack" ? "stacked" : ch.type === "pct" ? "percentStacked" : "clustered", hz = !!ch.horizontal;
+        const sers = ch.series.map((sr, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>${tx(sr)}${fill(sr.color)}<c:invertIfNegative val="0"/>${sr.err ? `<c:errBars><c:errDir val="${hz ? "x" : "y"}"/><c:errBarType val="both"/><c:errValType val="cust"/><c:noEndCap val="0"/><c:plus><c:numRef><c:f>${xe(sr.err)}</c:f></c:numRef></c:plus><c:minus><c:numRef><c:f>${xe(sr.err)}</c:f></c:numRef></c:minus></c:errBars>` : ""}<c:cat><c:strRef><c:f>${xe(sr.cat)}</c:f></c:strRef></c:cat><c:val><c:numRef><c:f>${xe(sr.val)}</c:f></c:numRef></c:val></c:ser>`).join("");
+        plot = `<c:barChart><c:barDir val="${hz ? "bar" : "col"}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>${sers}<c:gapWidth val="70"/>${grouping !== "clustered" ? '<c:overlap val="100"/>' : ""}<c:axId val="31"/><c:axId val="32"/></c:barChart><c:catAx><c:axId val="31"/>${scal(null, null, hz)}<c:delete val="0"/><c:axPos val="${hz ? "l" : "b"}"/><c:numFmt formatCode="General" sourceLinked="0"/><c:tickLblPos val="nextTo"/><c:crossAx val="32"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/></c:catAx>${valAx(32, 31, hz ? "b" : "l", ch.yTitle, ch.min, ch.max)}`;
+      }
+      return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace ${NSC}><c:roundedCorners val="0"/><c:chart>${title(ch.title, 1300)}<c:autoTitleDeleted val="${ch.title ? 0 : 1}"/><c:plotArea><c:layout/>${plot}</c:plotArea><c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1000"><a:latin typeface="Meiryo UI"/><a:ea typeface="Meiryo UI"/></a:defRPr></a:pPr><a:endParaRPr lang="ja-JP"/></a:p></c:txPr></c:chartSpace>`;
+    }
     function book() {
       const used = new Set(), sheets = [];
       return {
@@ -2832,23 +3057,24 @@ window.Store = (function () {
         async blob() {
           await loadZip();
           const z = new JSZip();
-          z.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>${sheets.map((s, k) => s.images && s.images.length ? `<Override PartName="/xl/drawings/drawing${k + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` : "").join("")}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s, k) => `<Override PartName="/xl/worksheets/sheet${k + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`);
+          z.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>${sheets.map((s, k) => (s.images && s.images.length) || (s.charts && s.charts.length) ? `<Override PartName="/xl/drawings/drawing${k + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` : "").join("")}${sheets.flatMap((s, k) => (s.charts || []).map((_, j) => `<Override PartName="/xl/charts/chart${k + 1}_${j + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`)).join("")}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s, k) => `<Override PartName="/xl/worksheets/sheet${k + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`);
           z.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
-          z.file("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${sheets.map((s, k) => `<sheet name="${xe(s.name)}" sheetId="${k + 1}" r:id="rId${k + 1}"/>`).join("")}</sheets></workbook>`);
+          z.file("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${sheets.map((s, k) => `<sheet name="${xe(s.name)}" sheetId="${k + 1}" r:id="rId${k + 1}"/>`).join("")}</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`);
           z.file("xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s, k) => `<Relationship Id="rId${k + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${k + 1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
           z.file("xl/styles.xml", STYLES);
           sheets.forEach((s, k) => z.file(`xl/worksheets/sheet${k + 1}.xml`, sheetXml(s, k === 0)));
-          // グラフなどの画像（PNG）を貼る
+          // 画像（PNG）とExcelのグラフを貼る
           let nImg = 0;
           sheets.forEach((s, k) => {
-            if (!s.images || !s.images.length) return;
-            const E = 9525, dn = k + 1;
+            const ims = s.images || [], chs = s.charts || []; if (!ims.length && !chs.length) return;
+            const E = 9525, dn = k + 1, rel = [];
             z.file(`xl/worksheets/_rels/sheet${k + 1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdImg" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${dn}.xml"/></Relationships>`);
-            const anchors = s.images.map((im, j) => { nImg++; z.file(`xl/media/chart${nImg}.png`, im.buf, { binary: true });
-              return `<xdr:oneCellAnchor><xdr:from><xdr:col>${im.c}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${im.r}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="${Math.round(im.w * E)}" cy="${Math.round(im.h * E)}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${j + 2}" name="グラフ${j + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rIdP${j + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${Math.round(im.w * E)}" cy="${Math.round(im.h * E)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`; });
-            const first = nImg - s.images.length;
+            const anchors = ims.map((im, j) => { nImg++; z.file(`xl/media/chart${nImg}.png`, im.buf, { binary: true }); rel.push(`<Relationship Id="rIdP${j + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/chart${nImg}.png"/>`);
+              return `<xdr:oneCellAnchor><xdr:from><xdr:col>${im.c}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${im.r}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="${Math.round(im.w * E)}" cy="${Math.round(im.h * E)}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${j + 2}" name="図${j + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rIdP${j + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${Math.round(im.w * E)}" cy="${Math.round(im.h * E)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`; });
+            chs.forEach((ch, j) => { const cn = `chart${k + 1}_${j + 1}.xml`; z.file(`xl/charts/${cn}`, chartXml(ch)); rel.push(`<Relationship Id="rIdC${j + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/${cn}"/>`);
+              anchors.push(`<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>${ch.c}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${ch.r}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>${ch.c + (ch.cols || 8)}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${ch.r + (ch.rows || 20)}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${100 + j}" name="グラフ ${j + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rIdC${j + 1}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>`); });
             z.file(`xl/drawings/drawing${dn}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors.join("")}</xdr:wsDr>`);
-            z.file(`xl/drawings/_rels/drawing${dn}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${s.images.map((_, j) => `<Relationship Id="rIdP${j + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/chart${first + j + 1}.png"/>`).join("")}</Relationships>`);
+            z.file(`xl/drawings/_rels/drawing${dn}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel.join("")}</Relationships>`);
           });
           return z.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", compression: "DEFLATE" });
         },
