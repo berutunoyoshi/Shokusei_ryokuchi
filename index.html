@@ -468,7 +468,7 @@ body.adding .fabs, body.adding .legend, body.adding .sheet { display: none; }
  *   ※ 地上部調査・概況調査の項目は仮の内容です。様式（Excel）に合わせて items を差し替えてください。
  * ===================================================================== */
 window.APP_CONFIG = {
-  version: "1.26.1（2026-11-24）",   // 更新したら sw.js の VERSION も変える
+  version: "1.27.0（2026-11-24）",   // 更新したら sw.js の VERSION も変える
   appTitle: "津波防災調査アプリ",
   filePrefix: "津波防災調査",
   storageKey: "chijo-veg",           // 端末内の保存名（同じURLで別の業務を分けるときに変更）
@@ -2085,6 +2085,32 @@ window.Store = (function () {
     const sd = Math.sqrt(n1 * n2 / 12 * ((N + 1) - tc / (N * (N - 1)))); if (!sd) return { n1, n2, U, p: 1, delta };
     const z = (Math.abs(U - n1 * n2 / 2) - 0.5) / sd; return { n1, n2, U, z, p: Math.min(1, 2 * (1 - normCdf(Math.max(0, z)))), delta };
   }
+  // ウェルチのt検定（数値の平均の差。分散や本数が違ってもよい）。各群3本以上で計算。効果量はヘッジズのg（a−b の向き）
+  function betacf(a, b, x) { let qab = a + b, qap = a + 1, qam = a - 1, c = 1, d = 1 - qab * x / qap; if (Math.abs(d) < 1e-300) d = 1e-300; d = 1 / d; let h = d;
+    for (let m = 1; m <= 300; m++) { const m2 = 2 * m; let aa = m * (b - m) * x / ((qam + m2) * (a + m2)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; const del = d * c; h *= del; if (Math.abs(del - 1) < 3e-14) break; } return h; }
+  function ibeta(x, a, b) { if (x <= 0) return 0; if (x >= 1) return 1; const bt = Math.exp(lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log(1 - x)); return x < (a + 1) / (a + b + 2) ? bt * betacf(a, b, x) / a : 1 - bt * betacf(b, a, 1 - x) / b; }
+  function welch(a, b) {
+    a = a.filter((v) => v != null && isFinite(v)); b = b.filter((v) => v != null && isFinite(v)); const n1 = a.length, n2 = b.length;
+    if (n1 < 3 || n2 < 3) return { kind: "t", n1, n2, p: null };
+    const m1 = avg(a), m2 = avg(b), v1 = sdv(a) ** 2, v2 = sdv(b) ** 2, se2 = v1 / n1 + v2 / n2;
+    const sp = Math.sqrt(((n1 - 1) * v1 + (n2 - 1) * v2) / (n1 + n2 - 2)), g = sp ? (m1 - m2) / sp * (1 - 3 / (4 * (n1 + n2) - 9)) : 0;
+    if (!se2) return { kind: "t", n1, n2, p: m1 === m2 ? 1 : 0, diff: m1 - m2, g };
+    const t = (m1 - m2) / Math.sqrt(se2), df = se2 ** 2 / ((v1 / n1) ** 2 / (n1 - 1) + (v2 / n2) ** 2 / (n2 - 1));
+    return { kind: "t", n1, n2, t, df, p: Math.min(1, ibeta(df / (df + t * t), df / 2, 0.5)), diff: m1 - m2, g };
+  }
+  // フィッシャーの正確検定（2×2：該当する・しないの割合の差）
+  function fisher2(a, b, c, d) { const lf = (n) => lgamma(n + 1), n = a + b + c + d, r1 = a + b, c1 = a + c, pr = (x) => Math.exp(lf(r1) + lf(n - r1) + lf(c1) + lf(n - c1) - lf(n) - lf(x) - lf(r1 - x) - lf(c1 - x) - lf(n - r1 - c1 + x));
+    const p0 = pr(a); let p = 0; for (let x = Math.max(0, r1 + c1 - n); x <= Math.min(r1, c1); x++) { const q = pr(x); if (q <= p0 * (1 + 1e-7)) p += q; } return Math.min(1, p); }
+  // 指標に合わせて検定を選ぶ：評価（活力度・①〜⑦）＝U検定、割合（0か100）＝フィッシャー、測った数値＝ウェルチのt検定
+  const ORDINAL = new Set(["vit", ...SV.chijo.items.filter((it) => it.score).map((it) => it.id)]);
+  function testFor(k, a, b) {
+    if (ORDINAL.has(k)) return { kind: "U", ...mwu(a, b) };
+    if (k === "bad") { const A = a.filter((v) => v != null), B = b.filter((v) => v != null); if (A.length < 3 || B.length < 3) return { kind: "F", n1: A.length, n2: B.length, p: null }; const x = A.filter((v) => v > 0).length, y = B.filter((v) => v > 0).length; return { kind: "F", n1: A.length, n2: B.length, p: fisher2(x, A.length - x, y, B.length - y), diffPct: x / A.length * 100 - y / B.length * 100 }; }
+    return welch(a, b);
+  }
+  const testName = (k) => ORDINAL.has(k) ? "U検定" : k === "bad" ? "フィッシャーの正確検定" : "ウェルチのt検定";
+  const effTxt = (t) => !t ? "－" : t.kind === "t" ? (t.g == null ? "－" : `g=${f2(t.g)}（${Math.abs(t.g) < 0.2 ? "ほぼなし" : Math.abs(t.g) < 0.5 ? "小" : Math.abs(t.g) < 0.8 ? "中" : "大"}）`) : t.kind === "F" ? (t.diffPct == null ? "－" : `差 ${f2(t.diffPct, 1)}ポイント`) : t.delta == null ? "－" : `δ=${f2(t.delta)}（${deltaWord(t.delta)}）`;
   // ホルム法：同じ表の中で何回も検定するときの補正（補正後のp値を返す）
   function holm(ps) {
     const idx = ps.map((p, i) => [p, i]).filter(([p]) => p != null).sort((a, b) => a[0] - b[0]), m = idx.length, out = ps.map(() => null); let run = 0;
@@ -2178,7 +2204,7 @@ window.Store = (function () {
     const sitesC = [...new Set(trees.map((x) => x.site))].sort((a, b) => a.localeCompare(b, "ja"));
     const cmp1 = (label, set) => { const G = set.filter((x) => x.growth === "良好" && x.vit != null), B = set.filter((x) => x.growth === "不良" && x.vit != null); if (!G.length && !B.length) return;
       const st = (arr, k) => ({ m: avg(arr.map((x) => x[k])), s: sdv(arr.map((x) => x[k])) });
-      compare.push({ label, nG: G.length, nB: B.length, vitG: st(G, "vit"), vitB: st(B, "vit"), hG: st(G, "h"), hB: st(B, "h"), gG: st(G, "g"), gB: st(B, "g"), tVit: mwu(G.map((x) => x.vit), B.map((x) => x.vit)), tH: mwu(G.map((x) => x.h), B.map((x) => x.h)), tG: mwu(G.map((x) => x.g), B.map((x) => x.g)) }); };
+      compare.push({ label, nG: G.length, nB: B.length, vitG: st(G, "vit"), vitB: st(B, "vit"), hG: st(G, "h"), hB: st(B, "h"), gG: st(G, "g"), gB: st(B, "g"), tVit: mwu(G.map((x) => x.vit), B.map((x) => x.vit)), tH: welch(G.map((x) => x.h), B.map((x) => x.h)), tG: welch(G.map((x) => x.g), B.map((x) => x.g)) }); };
     for (const s of sitesC) for (const f of CFG.forestTypes) cmp1(`${siteShort(s)} ${f}`, trees.filter((x) => x.site === s && x.forest === f));
     { const ad = holm(compare.map((c) => c.tVit.p)); compare.forEach((c, i) => { c.pAdj = ad.at(i); }); }
     cmp1("全体", trees); { const c = compare.at(-1); if (c && c.label === "全体") c.pAdj = c.tVit.p; }
@@ -2278,7 +2304,7 @@ window.Store = (function () {
     const grpOf = (A, st, z) => A.trees.filter((x) => x.vit != null && (!st || x.site === st) && (!z || x.z === z));
     const zc = (label, st, z) => { const a = grpOf(per.at(iP), st, z), b = grpOf(per.at(iC), st, z), va = a.map((x) => x.vit), vb = b.map((x) => x.vit), t = mwu(va, vb);
       return { label, n0: a.length, n1: b.length, m0: avg(va), m1: avg(vb), md0: median(va), md1: median(vb), bad0: a.length ? Math.round(a.filter((x) => BADS.has(x.cls)).length / a.length * 1000) / 10 : null, bad1: b.length ? Math.round(b.filter((x) => BADS.has(x.cls)).length / b.length * 1000) / 10 : null,
-        h0: avg(a.map((x) => x.h)), h1: avg(b.map((x) => x.h)), p: t.p, delta: cliffDelta(vb, va) }; };
+        h0: avg(a.map((x) => x.h)), h1: avg(b.map((x) => x.h)), p: t.p, delta: cliffDelta(vb, va), pH: welch(b.map((x) => x.h), a.map((x) => x.h)).p, pBad: (() => { const A = a.filter((x) => x.cls), B2 = b.filter((x) => x.cls); if (A.length < 3 || B2.length < 3) return null; const x0 = A.filter((x) => BADS.has(x.cls)).length, x1 = B2.filter((x) => BADS.has(x.cls)).length; return fisher2(x0, A.length - x0, x1, B2.length - x1); })() }; };
     const zoneKeys = [...new Set([iP, iC].flatMap((i) => per.at(i).groups.filter((g) => g.n).map((g) => g.site + "|" + g.z)))].sort();
     const sitesT = [...new Set(zoneKeys.map((k) => k.split("|")[0]))];
     const zoneCmp = [zc("全体", "", ""), ...sitesT.map((st) => zc(`${siteShort(st)}（全調査区）`, st, "")), ...zoneKeys.map((k) => { const [st, z] = k.split("|"); return zc(`${siteShort(st)} ${zLabel(z)}`, st, z); })];
@@ -2400,8 +2426,8 @@ window.Store = (function () {
       <h4>活力度の集計（調査区ごと）</h4>${chartStack(A.groups)}
       ${anTable(["調査区", "調査済み", "活力度 平均", "標準偏差", ...VCLS, "樹高 平均(m)", "幹周 平均(cm)"], A.groups.map((g) => [g.label, `${g.n}/${g.nAll}本`, f2(g.vitMean), f2(g.vitSd), ...VCLS.map((c) => `${g.counts[c]}本`), f2(g.hMean, 1), f2(g.gMean, 1)]))}
       <h4>良好区と不良区の比較</h4>${chartCompare(A.compare)}
-      ${anTable(["比較", "本数 良好／不良", "活力度 良好／不良", "p値", "補正p（ホルム）", "効果量δ", "判定", "樹高 良好／不良(m)", "p値（樹高）", "幹周 良好／不良(cm)", "p値（幹周）"], A.compare.map((c) => [c.label, `${c.nG}／${c.nB}`, `${f2(c.vitG.m)}／${f2(c.vitB.m)}`, pFmt(c.tVit.p), c.label === "全体" ? "（対象外）" : pFmt(c.pAdj), c.tVit.delta == null ? "－" : `${f2(c.tVit.delta)}（${deltaWord(c.tVit.delta)}）`, c.tVit.p == null ? pWord(c.tVit) : pWord2(c.pAdj), `${f2(c.hG.m, 1)}／${f2(c.hB.m, 1)}`, pFmt(c.tH.p), `${f2(c.gG.m, 1)}／${f2(c.gB.m, 1)}`, pFmt(c.tG.p)]), (i, j) => j === 4 && A.compare.at(i).label !== "全体" && A.compare.at(i).pAdj != null && A.compare.at(i).pAdj < 0.05)}
-      <p class="small muted">検定はマン・ホイットニーのU検定（各群3本以上。合計40本以下は正確検定）。補正p＝同じ表の中の検定回数で補正した値（ホルム法。「全体」は除く）で判定。効果量δは−1〜1で、負は良好区の方が良い（活力度が低い）ことを示し、大きさは0.147未満＝ほぼなし、0.33未満＝小、0.474未満＝中、それ以上＝大。</p>
+      ${anTable(["比較", "本数 良好／不良", "活力度 良好／不良", "p値", "補正p（ホルム）", "効果量δ", "判定", "樹高 良好／不良(m)", "p値（樹高・t検定）", "幹周 良好／不良(cm)", "p値（幹周・t検定）"], A.compare.map((c) => [c.label, `${c.nG}／${c.nB}`, `${f2(c.vitG.m)}／${f2(c.vitB.m)}`, pFmt(c.tVit.p), c.label === "全体" ? "（対象外）" : pFmt(c.pAdj), c.tVit.delta == null ? "－" : `${f2(c.tVit.delta)}（${deltaWord(c.tVit.delta)}）`, c.tVit.p == null ? pWord(c.tVit) : pWord2(c.pAdj), `${f2(c.hG.m, 1)}／${f2(c.hB.m, 1)}`, pFmt(c.tH.p), `${f2(c.gG.m, 1)}／${f2(c.gB.m, 1)}`, pFmt(c.tG.p)]), (i, j) => j === 4 && A.compare.at(i).label !== "全体" && A.compare.at(i).pAdj != null && A.compare.at(i).pAdj < 0.05)}
+      <p class="small muted">検定：活力度はマン・ホイットニーのU検定（各群3本以上。合計40本以下は正確検定）、樹高・幹周はウェルチのt検定。補正p＝同じ表の中の検定回数で補正した値（ホルム法。「全体」は除く）で判定。効果量δは−1〜1で、負は良好区の方が良い（活力度が低い）ことを示し、大きさは0.147未満＝ほぼなし、0.33未満＝小、0.474未満＝中、それ以上＝大。</p>
       <h4>項目別の平均（赤は、その調査区で最も評価が悪い項目）</h4>
       ${anTable(["項目", ...A.groups.filter((g) => g.n).map((g) => g.label)], SCORE_ITEMS.map((it, i) => [it.label, ...A.groups.filter((g) => g.n).map((g) => f2(g.itemMeans.at(i)))]), (i, j) => j > 0 && worst(A.groups.filter((g) => g.n).at(j - 1)) === i)}
       <h4>樹種ごとの結果</h4>${chartStack(A.species, "活力度の判定の内訳（樹種ごと）")}
@@ -2459,11 +2485,11 @@ window.Store = (function () {
     if (!TR.ok) return `<p class="empty">比べられる前の年度の記録がありません。<br>「出力・設定 → 調査年度」で年度を切り替えて調査すると、ここに前年度との比較と推移が表示されます。</p>`;
     const row = (x) => [x.label, x.n, f2(x.v0), f2(x.v1), x.dv == null ? "－" : (x.dv > 0 ? "+" : "") + f2(x.dv), `${x.better}／${x.same}／${x.worse}`, f2(x.dh, 2), f2(x.dg, 1), x.test.p == null ? "本数不足" : pFmt(x.test.p), x.test.p == null ? "－" : pWord2(x.test.p)];
     const head = ["区分", "本数", `活力度 ${fyShort(TR.prevY)}`, `活力度 ${fyShort(S.year)}`, "変化", "良化／同じ／悪化（本）", "樹高の伸び(m)", "幹周の伸び(cm)", "p値", "判定"];
-    const zrow = (x) => [x.label, `${x.n0}／${x.n1}`, f2(x.m0), f2(x.m1), x.m0 != null && x.m1 != null ? (x.m1 - x.m0 > 0 ? "+" : "") + f2(x.m1 - x.m0) : "－", `${f2(x.md0, 1)}／${f2(x.md1, 1)}`, `${f2(x.bad0, 1)}／${f2(x.bad1, 1)}`, `${f2(x.h0, 1)}／${f2(x.h1, 1)}`, pFmt(x.p), pFmt(x.pAdj), x.delta == null ? "－" : `${f2(x.delta)}（${deltaWord(x.delta)}）`, x.p == null ? "本数不足" : pWord2(x.pAdj)];
+    const zrow = (x) => [x.label, `${x.n0}／${x.n1}`, f2(x.m0), f2(x.m1), x.m0 != null && x.m1 != null ? (x.m1 - x.m0 > 0 ? "+" : "") + f2(x.m1 - x.m0) : "－", `${f2(x.md0, 1)}／${f2(x.md1, 1)}`, `${f2(x.bad0, 1)}／${f2(x.bad1, 1)}`, pFmt(x.pBad), `${f2(x.h0, 1)}／${f2(x.h1, 1)}`, pFmt(x.pH), pFmt(x.p), pFmt(x.pAdj), x.delta == null ? "－" : `${f2(x.delta)}（${deltaWord(x.delta)}）`, x.p == null ? "本数不足" : pWord2(x.pAdj)];
     const P = fyShort(TR.prevY), C = fyShort(S.year);
     return `<p>記録のある年度：${TR.years.map(fyShort).join("・")}。${fyLabel(TR.prevY)}と${fyLabel(S.year)}を、調査区（調査地×樹林の種類×生育状況）の単位で比べます。</p>
-      <h4>調査区ごとの比較（${P} → ${C}）</h4>${anTable(["区分", `本数 ${P}／${C}`, `活力度 平均 ${P}`, `活力度 平均 ${C}`, "変化", `中央値 ${P}／${C}`, `不良以上の割合(%) ${P}／${C}`, `樹高 平均(m) ${P}／${C}`, "p値", "補正p", "効果量δ", "判定"], TR.zoneCmp.map(zrow), (i, j) => j === 9 && i > 0 && TR.zoneCmp.at(i).pAdj != null && TR.zoneCmp.at(i).pAdj < 0.05)}
-      <p class="small muted">年度ごとに別の木を調査しているため、前の年度と今の年度を別の集団として比べます（マン・ホイットニーのU検定。補正pはホルム法、「全体」は補正の対象外）。変化がマイナス、δが負なら今の年度の方が良好（活力度が低い）。</p>
+      <h4>調査区ごとの比較（${P} → ${C}）</h4>${anTable(["区分", `本数 ${P}／${C}`, `活力度 平均 ${P}`, `活力度 平均 ${C}`, "変化", `中央値 ${P}／${C}`, `不良以上の割合(%) ${P}／${C}`, "p値（割合・フィッシャー）", `樹高 平均(m) ${P}／${C}`, "p値（樹高・t検定）", "p値（活力度・U検定）", "補正p（活力度）", "効果量δ（活力度）", "判定（活力度）"], TR.zoneCmp.map(zrow), (i, j) => j === 11 && i > 0 && TR.zoneCmp.at(i).pAdj != null && TR.zoneCmp.at(i).pAdj < 0.05)}
+      <p class="small muted">年度ごとに別の木を調査しているため、前の年度と今の年度を別の集団として比べます（活力度＝マン・ホイットニーのU検定、不良以上の割合＝フィッシャーの正確検定、樹高＝ウェルチのt検定。補正pは活力度について、ホルム法、「全体」は補正の対象外）。変化がマイナス、δが負なら今の年度の方が良好（活力度が低い）。</p>
       ${TR.overall.n ? `<h4>同じ木どうしの比較</h4>${anTable(head, [row(TR.overall), ...TR.byType, ...TR.byZone].map((x) => x.label ? row(x) : x))}<p class="small muted">両方の年度を調査した同じ木（${TR.overall.n}本）の比較。ウィルコクソンの符号付順位検定。</p>` : ""}
       <h4>活力度の推移（調査区ごと）</h4>${chartLines(TR.years, TR.series, "活力度の平均の推移") || `<p class="small muted">2年度以上のデータで表示します。</p>`}
       ${anTable(["調査区", ...TR.years.map(fyShort)], TR.series.map((s) => [s.label, ...s.vals.map((v) => f2(v))]))}
@@ -2613,7 +2639,7 @@ window.Store = (function () {
       ["・活力度＝①〜⑦の平均（空欄は除く）を小数1位に四捨五入。判定：" + CFG.vitality.map(([lt, c]) => `${c}${isFinite(lt) ? `（${lt}未満）` : ""}`).join("、") + "。", 0],
       ["・形状比＝樹高(cm)÷胸高直径(cm)、胸高直径＝幹周÷π。区分：" + SLC.map(([lt, c]) => `${c}${isFinite(lt) ? `（${lt}未満）` : ""}`).join("、") + "（目安）。", 0],
       ["・植栽密度＝10000÷(樹木間隔の平均)²（小数点以下切り上げ）。相対光量子束密度＝調査地÷対照地×100。枝葉のある範囲＝平均樹高−下枝高、枯れ枝の範囲＝枯れ下がり高さ−下枝高、下枝の枯れ割合＝枯れ枝の範囲÷枝葉のある範囲×100。", 0],
-      ["・良好と不良の比較はマン・ホイットニーのU検定（各3本以上、合計40本以下は正確検定）。p値は同じ表の中でホルム法で補正した値も示します。効果量δ（−1〜1）は差の大きさ。", 0],
+      ["・良好と不良の比較：活力度・評価①〜⑦はマン・ホイットニーのU検定（順位で比較。各3本以上、合計40本以下は正確検定、効果量δ：−1〜1）。樹高・幹周・形状比などの測った数値はウェルチのt検定（平均の差。分散が違ってもよい。効果量はヘッジズのg）。不良以上の割合はフィッシャーの正確検定。p値は同じ表の中でホルム法で補正した値も示します。", 0],
       ["・環境条件の相関：「相関（関数）」はピアソンの相関係数（CORREL関数、データを直すと変わる）、「順位相関ρ」はスピアマンの順位相関係数（出力時の値）。調査区が少ないため傾向の目安です。", 0],
       ["・良好区・不良区は木の状態で分けた区分のため、差が出るのはある意味当然です。また調査地ごとに1か所ずつの場合、差が場所の違いによるのかは区別できません。", 0]].forEach(([t, st], i) => n0.set(i, 0, t, st));
     const D = addDataSheets(bk, A);
@@ -2624,13 +2650,13 @@ window.Store = (function () {
     let r = 0; sG.set(r++, 0, "良好と不良の比較（関数で集計。元データを直すと変わります。p値・δは出力時の値）", 4); r++;
     for (const [mk, ml, mn, mx] of METRICS) {
       sG.set(r++, 0, ml, 6);
-      const head = ["調査地", "樹種", "良好 本数", "良好 平均", "良好 標準偏差", "不良 本数", "不良 平均", "不良 標準偏差", "差（不良−良好）", "p値（出力時）", "補正p（出力時）", "効果量δ（出力時）", "判定（出力時）"];
+      const head = ["調査地", "樹種", "良好 本数", "良好 平均", "良好 標準偏差", "不良 本数", "不良 平均", "不良 標準偏差", "差（不良−良好）", `p値（${testName(mk)}・出力時）`, "補正p（出力時）", `効果量${mk === "vit" ? "δ" : "g"}（出力時）`, "判定（出力時）"];
       sG.row(r, head, 1); sG.heights[r] = 32; const h0 = r; r++;
       const rows = [["全体", "全樹種"], ...sites.map((s) => [s, "全樹種"])], spRows = [];
       for (const sc of ["全体", ...sites]) { const xs = T.filter((x) => sc === "全体" || x.site === sc); const sps = [...new Set(xs.map((x) => x.t.sp).filter(Boolean))].sort((a, b) => xs.filter((x) => x.t.sp === b).length - xs.filter((x) => x.t.sp === a).length); sps.forEach((sp) => spRows.push([sc, sp])); }
       const all = [...rows, ...spRows], first = r;
       const get = (sc, sp, gr) => T.filter((x) => (sc === "全体" || x.site === sc) && (sp === "全樹種" || x.t.sp === sp) && x.growth === gr).map((x) => mk === "vit" ? x.vit : x[mk]).filter((v) => v != null && isFinite(v));
-      const tests = all.map(([sc, sp]) => mwu(get(sc, sp, "良好"), get(sc, sp, "不良"))), adj = holm(tests.map((t) => t.p));
+      const tests = all.map(([sc, sp]) => testFor(mk, get(sc, sp, "良好"), get(sc, sp, "不良"))), adj = holm(tests.map((t) => t.p));
       all.forEach(([sc, sp], i) => { const R = r + 1, A_ = `$A${R}`, B_ = `$B${R}`, gv = get(sc, sp, "良好"), bv = get(sc, sp, "不良"), t = tests.at(i);
         const cs = (gr) => { const site = { ref: `IF(${A_}="全体","*",${A_})` }, sp_ = { ref: `IF(${B_}="全樹種","*",${B_})` };
           const cf = `${D.TR("site")},${site.ref},${D.TR("sp")},${sp_.ref},${D.TR("growth")},${xlStr(gr)}`, arr = `((${A_}="全体")+(${D.TR("site")}=${A_})>0)*((${B_}="全樹種")+(${D.TR("sp")}=${B_})>0)*(${D.TR("growth")}=${xlStr(gr)})*ISNUMBER(${D.TR(mk)})`; return { cf, arr }; };
@@ -2639,7 +2665,7 @@ window.Store = (function () {
           { f: `COUNTIFS(${G.cf},${D.TR(mk)},">=0")`, v: gv.length }, { f: `IFERROR(ROUND(AVERAGEIFS(${D.TR(mk)},${G.cf}),${dd}),"")`, v: nb(avg(gv), dd) }, { f: `IFERROR(ROUND(_xlfn.STDEV.S(IF(${G.arr},${D.TR(mk)})),${dd}),"")`, a: true, v: nb(sdv(gv), dd) },
           { f: `COUNTIFS(${Bd.cf},${D.TR(mk)},">=0")`, v: bv.length }, { f: `IFERROR(ROUND(AVERAGEIFS(${D.TR(mk)},${Bd.cf}),${dd}),"")`, v: nb(avg(bv), dd) }, { f: `IFERROR(ROUND(_xlfn.STDEV.S(IF(${Bd.arr},${D.TR(mk)})),${dd}),"")`, a: true, v: nb(sdv(bv), dd) },
           { f: `IF(AND(ISNUMBER(D${R}),ISNUMBER(G${R})),ROUND(G${R}-D${R},${dd}),"")`, v: avg(gv) != null && avg(bv) != null ? nb(avg(bv) - avg(gv), dd) : "" },
-          pv(t.p), pv(adj.at(i)), nb(t.delta), t.p == null ? "本数不足" : pWord2(adj.at(i))], 2);
+          pv(t.p), pv(adj.at(i)), nb(t.kind === "t" ? t.g : t.delta), t.p == null ? "本数不足" : pWord2(adj.at(i))], 2);
         r++; });
       // グラフ：調査地全体・調査地ごとの良好と不良の平均（線＝標準偏差）
       const last = first + rows.length;
@@ -2725,8 +2751,8 @@ window.Store = (function () {
     else {
       let ry = 0; sY.set(ry++, 0, `調査区ごとの比較（${fyLabel(TRd.prevY)} → ${fyLabel(S.year)}。年度ごとに別の木を調査しているため、調査区の単位で比較。出力時の値）`, 4); ry++;
       const P = fyShort(TRd.prevY), Cy = fyShort(S.year);
-      ry = tblRows(sY, ry, ["区分", `本数 ${P}`, `本数 ${Cy}`, `活力度 平均 ${P}`, `活力度 平均 ${Cy}`, "変化", `中央値 ${P}`, `中央値 ${Cy}`, `不良以上(%) ${P}`, `不良以上(%) ${Cy}`, `樹高 平均 ${P}`, `樹高 平均 ${Cy}`, "p値", "補正p", "効果量δ", "判定"],
-        TRd.zoneCmp.map((x) => [x.label, x.n0, x.n1, nb(x.m0), nb(x.m1), x.m0 != null && x.m1 != null ? nb(x.m1 - x.m0) : "", nb(x.md0, 1), nb(x.md1, 1), nb(x.bad0, 1), nb(x.bad1, 1), nb(x.h0, 1), nb(x.h1, 1), pv(x.p), pv(x.pAdj), nb(x.delta), x.p == null ? "本数不足" : pWord2(x.pAdj)]));
+      ry = tblRows(sY, ry, ["区分", `本数 ${P}`, `本数 ${Cy}`, `活力度 平均 ${P}`, `活力度 平均 ${Cy}`, "変化", `中央値 ${P}`, `中央値 ${Cy}`, `不良以上(%) ${P}`, `不良以上(%) ${Cy}`, "p値（割合・フィッシャー）", `樹高 平均 ${P}`, `樹高 平均 ${Cy}`, "p値（樹高・t検定）", "p値（活力度・U検定）", "補正p（活力度）", "効果量δ（活力度）", "判定（活力度）"],
+        TRd.zoneCmp.map((x) => [x.label, x.n0, x.n1, nb(x.m0), nb(x.m1), x.m0 != null && x.m1 != null ? nb(x.m1 - x.m0) : "", nb(x.md0, 1), nb(x.md1, 1), nb(x.bad0, 1), nb(x.bad1, 1), pv(x.pBad), nb(x.h0, 1), nb(x.h1, 1), pv(x.pH), pv(x.p), pv(x.pAdj), nb(x.delta), x.p == null ? "本数不足" : pWord2(x.pAdj)]));
       sY.set(ry++, 0, "マン・ホイットニーのU検定（前の年度と今の年度を別の集団として比較）。補正pはホルム法（「全体」は対象外）。効果量δが負なら今の年度の方が良好。", 8); ry++;
       if (TRd.overall.n) ry = tblRows(sY, ry, ["同じ木どうし：区分", "本数", `活力度 ${P}`, `活力度 ${Cy}`, "変化", "良化／同じ／悪化（本）", "樹高の伸び(m)", "幹周の伸び(cm)", "p値", "判定"], [TRd.overall, ...TRd.byType, ...TRd.byZone].map((x) => [x.label, x.n, nb(x.v0), nb(x.v1), nb(x.dv), `${x.better}／${x.same}／${x.worse}`, nb(x.dh), nb(x.dg, 1), x.test.p == null ? "本数不足" : pv(x.test.p), x.test.p == null ? "" : pWord2(x.test.p)]));
       const t0 = ry; sY.row(ry, ["調査区", ...TRd.years.map(fyShort)], 1); TRd.series.forEach((x, i) => sY.row(ry + 1 + i, [x.label, ...x.vals.map((v) => nb(v))], 2)); ry += TRd.series.length + 2;
@@ -2798,10 +2824,10 @@ window.Store = (function () {
     let xv = sortV(XF, [...new Set(rows.map(xg))]); if (XF.k === "sp") xv.sort((a, b) => rows.filter((x) => xg(x) === b).length - rows.filter((x) => xg(x) === a).length);
     const cv = B.color === "all" ? ["全体"] : sortV(CF, [...new Set(rows.map(cg))]);
     const out = xv.map((r) => { const rx = rows.filter((x) => xg(x) === r); return { r, rx, cells: cv.map((c) => ({ c, ...biStats(B.color === "all" ? rx : rx.filter((x) => cg(x) === c), YF) })) }; });
-    if (B.color === "growth") { out.forEach((o) => { const G = o.cells.find((x) => x.c === "良好"), Bd = o.cells.find((x) => x.c === "不良"); o.test = G && Bd ? mwu(G.vals, Bd.vals) : null; }); const ad = holm(out.map((o) => o.test ? o.test.p : null)); out.forEach((o, i) => { o.pAdj = ad.at(i); }); }
+    if (B.color === "growth") { out.forEach((o) => { const G = o.cells.find((x) => x.c === "良好"), Bd = o.cells.find((x) => x.c === "不良"); o.test = G && Bd ? testFor(YF.k, G.vals, Bd.vals) : null; }); const ad = holm(out.map((o) => o.test ? o.test.p : null)); out.forEach((o, i) => { o.pAdj = ad.at(i); }); }
     let overall = null;
     if (B.color === "all" || B.color === B.x) { const gs = out.map((o) => ({ label: o.r, vals: o.cells.flatMap((c) => c.vals) })).filter((g) => g.vals.length >= 3);
-      if (gs.length === 2) overall = { kind: "U検定", label: `${gs.at(0).label} と ${gs.at(1).label}`, ...mwu(gs.at(0).vals, gs.at(1).vals) }; else if (gs.length >= 3) { const k = kruskal(gs); if (k) overall = { kind: "クラスカル・ウォリス検定", label: `${gs.length}群`, p: k.p }; } }
+      if (gs.length === 2) overall = { ...testFor(YF.k, gs.at(0).vals, gs.at(1).vals), kind: testName(YF.k), label: `${gs.at(0).label} と ${gs.at(1).label}` }; else if (gs.length >= 3) { const k = kruskal(gs); if (k) overall = { kind: "クラスカル・ウォリス検定", label: `${gs.length}群`, p: k.p }; } }
     return { XF, YF, CF, xv, cv, out, overall };
   }
   function biCatChart(C, B) {
@@ -2868,9 +2894,9 @@ window.Store = (function () {
       const C = biCat(rows, B);
       body = biCatChart(C, B) || `<p class="empty">条件に合うデータがありません。</p>`;
       const show = B.chart === "box" ? "中央値" : "平均", cnt = B.chart === "count" || B.chart === "stack";
-      table = anTable([XF.label, ...C.cv.flatMap((c) => cnt ? [`${c} 本数`] : [`${c} 本数`, `${c} ${show}`]), ...(B.color === "growth" && !cnt ? ["p値", "補正p", "効果量δ", "判定"] : [])],
-        C.out.map((o) => [o.r, ...o.cells.flatMap((c) => cnt ? [c.cnt] : [c.n, f2(B.chart === "box" ? c.med : c.m, C.YF.pct ? 0 : 2)]), ...(B.color === "growth" && !cnt ? [o.test ? pFmt(o.test.p) : "－", pFmt(o.pAdj), o.test && o.test.delta != null ? `${f2(o.test.delta)}（${deltaWord(o.test.delta)}）` : "－", o.test && o.test.p != null ? pWord2(o.pAdj) : "本数不足"] : [])]));
-      if (B.color === "growth" && !cnt) table += `<p class="small muted">各行で良好と不良を比べたU検定（各3本以上）。補正p＝この表の行数で補正（ホルム法）。δが負なら良好の方が値が小さい。</p>`;
+      table = anTable([XF.label, ...C.cv.flatMap((c) => cnt ? [`${c} 本数`] : [`${c} 本数`, `${c} ${show}`]), ...(B.color === "growth" && !cnt ? ["p値", "補正p", "効果量", "判定"] : [])],
+        C.out.map((o) => [o.r, ...o.cells.flatMap((c) => cnt ? [c.cnt] : [c.n, f2(B.chart === "box" ? c.med : c.m, C.YF.pct ? 0 : 2)]), ...(B.color === "growth" && !cnt ? [o.test ? pFmt(o.test.p) : "－", pFmt(o.pAdj), effTxt(o.test), o.test && o.test.p != null ? pWord2(o.pAdj) : "本数不足"] : [])]));
+      if (B.color === "growth" && !cnt) table += `<p class="small muted">各行で良好と不良を比べた${testName(C.YF.k)}（各3本以上）。補正p＝この表の行数で補正（ホルム法）。${C.YF.k === "bad" ? "効果量は割合の差（良好−不良）。" : ORDINAL.has(C.YF.k) ? "効果量δが負なら良好の方が値が小さい。" : "効果量g（ヘッジズ）が負なら良好の方が値が小さい。0.2未満＝ほぼなし、0.5未満＝小、0.8未満＝中、それ以上＝大。"}${ORDINAL.has(C.YF.k) || C.YF.k === "bad" ? "" : "t検定は平均の差を見ます。値の分布が大きく偏っている・外れ値があるときは、箱ひげ図で確かめてください。"}</p>`;
       if (C.overall && !cnt) table += `<p class="small"><b>${esc(C.XF.label)}どうしの比較</b>（${esc(C.overall.label)}・${esc(C.overall.kind)}）：p＝${pFmt(C.overall.p)} → ${pWord2(C.overall.p)}${C.overall.kind === "クラスカル・ウォリス検定" ? "（参考）" : ""}</p>`;
     } else {
       const E = biNum(rows, B);
